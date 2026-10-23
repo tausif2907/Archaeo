@@ -125,14 +125,14 @@ Each call records model, tokens in/out, latency, and estimated cost to a `ModelC
 ## 6. Phase 1 — Ingest (Days 1–2)
 
 - [x] `POST /repos { url }` creates a `Repo` and enqueues `ingest`
-- [ ] Clone (shallow for code, full history via `git log`) into a workspace dir, with size cap (e.g. 200k LOC, else fail with a clear message)
-- [ ] tree-sitter parse: files, symbols, imports; build `import` edges; best-effort `call` edges
-- [ ] Compute per-file LOC, simple complexity (e.g. branch count), and churn (commits touching the file)
-- [ ] Fetch commits (message, files, diff stats) and PRs and issues via Octokit; link PRs to merge commits
-- [ ] Chunk code by symbol, plus commits and PRs; embed them into `Chunk`
-- [ ] `summarizeCheap` per file and per commit, as batched BullMQ jobs with concurrency and retry
-- [ ] SSE or polling progress endpoint; UI progress bar with stages (clone, parse, history, embed, summarize)
-- [ ] Idempotent re-ingest (skip unchanged files by hash)
+- [x] Clone (shallow for code, full history via `git log`) into a workspace dir, with size cap (e.g. 200k LOC, else fail with a clear message)
+- [x] tree-sitter parse: files, symbols, imports; build `import` edges; best-effort `call` edges
+- [x] Compute per-file LOC, simple complexity (e.g. branch count), and churn (commits touching the file)
+- [x] Fetch commits (message, files, diff stats) and PRs and issues via Octokit; link PRs to merge commits
+- [x] Chunk code by symbol, plus commits and PRs; embed them into `Chunk`
+- [x] `summarizeCheap` per file and per commit, as batched BullMQ jobs with concurrency and retry
+- [x] SSE or polling progress endpoint; UI progress bar with stages (clone, parse, history, embed, summarize)
+- [x] Idempotent re-ingest (skip unchanged files by hash)
 
 **Acceptance**
 - Pasting the demo repo URL reaches `ready`, and the counts of files, symbols, commits, and PRs match reality within reason
@@ -284,3 +284,13 @@ _Record decisions here as they are made (date, decision, reason)._
 - **2026-10-24 — Embedding dimension 1024** (`EMBED_DIM`, `vector(1024)` column). Changing it after kickoff needs a migration. The mock embedder uses feature hashing (bag of words), so offline retrieval still returns sensible matches.
 - **2026-10-24 — `ModelCall` recording is injected** (`CallRecorder` interface in `models`, `PrismaCallRecorder` in `db`) so `models` does not depend on the DB.
 - **2026-10-24 — Phase 0 worker is a stub:** it consumes the `ingest` queue and leaves the repo `queued` with "Ingest pipeline not implemented yet (Phase 1)".
+- **2026-10-24 — Parsing uses `web-tree-sitter` (wasm)** with the `.wasm` grammars shipped inside `tree-sitter-python` and `tree-sitter-typescript`. No native build on Windows or CI (`pnpm.neverBuiltDependencies` skips their node-gyp step). JavaScript is parsed with the TSX grammar.
+- **2026-10-24 — Full clone instead of shallow.** `git log --numstat` needs every blob, so shallow or blobless clones would be slower overall. Re-ingest does `fetch` plus a hard reset of the workspace clone (`WORKSPACE_DIR`, default `.workspace/`).
+- **2026-10-24 — Size cap is 200k non-blank LOC of parseable source** (`INGEST_MAX_LOC`). Files over 512 KB are treated as generated and skipped. Over the cap, the repo is marked `failed` with a clear message and not retried.
+- **2026-10-24 — Call edges are best effort and never guessed:** same file, then imported files, then a repo-wide unique name. Ambiguous calls are dropped.
+- **2026-10-24 — PR ↔ commit links** use the PR's merge commit SHA plus `Merge pull request #N` and a trailing `(#N)` on squash-merge subjects.
+- **2026-10-24 — GitHub sync is incremental** (`Repo.githubSyncedAt`; PRs sorted by `updated`, issues via `since`). A GitHub failure, such as the rate limit without `GITHUB_TOKEN`, becomes a warning on the repo, not a failed ingest.
+- **2026-10-24 — Summaries run as a BullMQ flow:** one `summarize` child job per 25 files or commits (3 attempts, exponential backoff), and a `finalize` parent marks the repo `ready`. Failed children don't block `ready`. Only the 1,000 most recent commits get a summary (`SUMMARIZE_MAX_COMMITS`) to bound live-model cost.
+- **2026-10-24 — Progress uses polling** (`GET /repos/:id/progress`), with per-stage counts computed from the DB rather than stored counters. SSE is reserved for agent runs (Phase 3).
+- **2026-10-24 — Chunks store `path`/`startLine`/`endLine`** so Phase 3 answers can cite `path:line` directly. Classes are chunked as their header only, so method bodies aren't embedded twice. No vector index yet: an exact scan over ~10k vectors per repo is fast enough. Add HNSW in Phase 3 if needed.
+- **2026-10-24 — Phase 1 acceptance on pallets/click:** 91 files, 2,078 symbols, 3,379 commits, 1,086 merged PRs and 1,819 issues, all matching `git` and GitHub search. First ingest took ~2 min (mostly unauthenticated GitHub paging). Re-ingest took ~4 s with 0 new rows.
