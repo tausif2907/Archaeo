@@ -2,7 +2,7 @@ import "@archaeo/shared/load-env";
 import { requireEnv } from "@archaeo/shared/env";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
-import { PrismaCallRecorder, prisma } from "@archaeo/db";
+import { PrismaCallRecorder, prisma, repoCounts } from "@archaeo/db";
 import { configureModels } from "@archaeo/models";
 import { QUEUES, type IngestJobData } from "@archaeo/shared";
 import { buildApp } from "./app";
@@ -19,9 +19,11 @@ const app = await buildApp({
     findById: (id) => prisma.repo.findUnique({ where: { id } }),
     create: (data) => prisma.repo.create({ data }),
     list: () => prisma.repo.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
+    markQueued: (id) => prisma.repo.update({ where: { id }, data: { status: "queued", stage: null, statusMessage: null } }),
+    counts: (id) => repoCounts(prisma, id),
   },
   enqueueIngest: async (repoId) => {
-    await ingestQueue.add("ingest", { repoId }, { jobId: `ingest-${repoId}`, attempts: 3, backoff: { type: "exponential", delay: 2000 } });
+    await ingestQueue.add("ingest", { repoId }, { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 });
   },
   healthChecks: {
     db: () => prisma.$queryRaw`SELECT 1`,

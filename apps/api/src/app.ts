@@ -1,7 +1,8 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
 import type { Repo } from "@archaeo/db";
-import { CreateRepoInput, parseGitHubUrl, type RepoDto } from "@archaeo/shared";
+import { CreateRepoInput, parseGitHubUrl, type RepoCounts, type RepoDto, type RepoProgressDto } from "@archaeo/shared";
+import { buildStages } from "./progress";
 
 /** Narrow persistence + queue surface the routes need, so tests can swap in fakes. */
 export interface RepoStore {
@@ -9,6 +10,8 @@ export interface RepoStore {
   findById(id: string): Promise<Repo | null>;
   create(data: { url: string; owner: string; name: string }): Promise<Repo>;
   list(): Promise<Repo[]>;
+  markQueued(id: string): Promise<Repo>;
+  counts(id: string): Promise<RepoCounts>;
 }
 
 export interface AppDeps {
@@ -25,6 +28,7 @@ export function toRepoDto(repo: Repo): RepoDto {
     owner: repo.owner,
     name: repo.name,
     status: repo.status,
+    stage: repo.stage,
     statusMessage: repo.statusMessage,
     defaultBranch: repo.defaultBranch,
     language: repo.language,
@@ -34,7 +38,7 @@ export function toRepoDto(repo: Repo): RepoDto {
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
-  const app = Fastify({ logger: process.env.NODE_ENV !== "test" });
+  const app = Fastify({ logger: process.env.NODE_ENV !== "test" && !process.env.VITEST });
   await app.register(cors, { origin: deps.webOrigin ?? true });
 
   app.get("/health", async (_req, reply) => {
@@ -71,6 +75,26 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const repo = await deps.repos.findById(req.params.id);
     if (!repo) return reply.code(404).send({ error: "Repo not found" });
     return toRepoDto(repo);
+  });
+
+  app.get<{ Params: { id: string } }>("/repos/:id/progress", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    const counts = await deps.repos.counts(repo.id);
+    const body: RepoProgressDto = { repo: toRepoDto(repo), stages: buildStages(repo, counts), counts };
+    return body;
+  });
+
+  /** Re-run ingest. Safe to repeat: unchanged files, known commits and existing embeddings are skipped. */
+  app.post<{ Params: { id: string } }>("/repos/:id/ingest", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    if (repo.status === "ingesting" || repo.status === "queued") {
+      return reply.code(409).send({ error: "Ingest already in progress" });
+    }
+    const queued = await deps.repos.markQueued(repo.id);
+    await deps.enqueueIngest(repo.id);
+    return reply.code(202).send(toRepoDto(queued));
   });
 
   return app;
