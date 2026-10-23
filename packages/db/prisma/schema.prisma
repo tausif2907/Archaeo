@@ -1,0 +1,263 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector]
+}
+
+enum RepoStatus {
+  queued
+  ingesting
+  ready
+  failed
+}
+
+enum SymbolKind {
+  function
+  class
+  method
+}
+
+enum EdgeKind {
+  import
+  call
+}
+
+enum ChunkSource {
+  code
+  commit
+  pr
+}
+
+enum AgentRunKind {
+  chat
+  trace
+  fix
+}
+
+enum AgentRunStatus {
+  running
+  succeeded
+  failed
+  limited
+}
+
+model Repo {
+  id            String     @id @default(cuid())
+  url           String     @unique
+  owner         String
+  name          String
+  defaultBranch String?
+  language      String?
+  status        RepoStatus @default(queued)
+  statusMessage String?
+  /// Free-form counters, e.g. { files, symbols, commits, prs, loc }
+  stats         Json?
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  files        File[]
+  edges        Edge[]
+  commits      Commit[]
+  pullRequests PullRequest[]
+  issues       Issue[]
+  eras         Era[]
+  modules      Module[]
+  chunks       Chunk[]
+  agentRuns    AgentRun[]
+}
+
+model File {
+  id         String   @id @default(cuid())
+  repoId     String
+  path       String
+  language   String?
+  /// Content hash, used to skip unchanged files on re-ingest
+  hash       String?
+  loc        Int      @default(0)
+  summary    String?
+  complexity Int      @default(0)
+  churn      Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  repo     Repo     @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  symbols  Symbol[]
+  outEdges Edge[]   @relation("EdgeFromFile")
+  inEdges  Edge[]   @relation("EdgeToFile")
+
+  @@unique([repoId, path])
+}
+
+model Symbol {
+  id        String     @id @default(cuid())
+  fileId    String
+  kind      SymbolKind
+  name      String
+  startLine Int
+  endLine   Int
+  summary   String?
+
+  file     File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  outEdges Edge[] @relation("EdgeFromSymbol")
+  inEdges  Edge[] @relation("EdgeToSymbol")
+
+  @@index([fileId])
+  @@index([name])
+}
+
+model Edge {
+  id           String   @id @default(cuid())
+  repoId       String
+  kind         EdgeKind
+  fromFileId   String?
+  toFileId     String?
+  fromSymbolId String?
+  toSymbolId   String?
+
+  repo       Repo    @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  fromFile   File?   @relation("EdgeFromFile", fields: [fromFileId], references: [id], onDelete: Cascade)
+  toFile     File?   @relation("EdgeToFile", fields: [toFileId], references: [id], onDelete: Cascade)
+  fromSymbol Symbol? @relation("EdgeFromSymbol", fields: [fromSymbolId], references: [id], onDelete: Cascade)
+  toSymbol   Symbol? @relation("EdgeToSymbol", fields: [toSymbolId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, kind])
+  @@index([fromFileId])
+  @@index([toFileId])
+  @@index([fromSymbolId])
+  @@index([toSymbolId])
+}
+
+model Commit {
+  id           String   @id @default(cuid())
+  repoId       String
+  sha          String
+  author       String
+  date         DateTime
+  message      String
+  /// [{ path, additions, deletions }]
+  filesChanged Json?
+  summary      String?
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, sha])
+  @@index([repoId, date])
+}
+
+model PullRequest {
+  id               String    @id @default(cuid())
+  repoId           String
+  number           Int
+  title            String
+  body             String?
+  mergedAt         DateTime?
+  linkedCommitShas String[]
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, number])
+}
+
+model Issue {
+  id     String   @id @default(cuid())
+  repoId String
+  number Int
+  title  String
+  body   String?
+  state  String
+  labels String[]
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, number])
+}
+
+model Era {
+  id            String   @id @default(cuid())
+  repoId        String
+  title         String
+  startDate     DateTime
+  endDate       DateTime
+  narrative     String?
+  keyCommitShas String[]
+  keyPrNumbers  Int[]
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, startDate])
+}
+
+model Module {
+  id         String  @id @default(cuid())
+  repoId     String
+  path       String
+  summary    String?
+  parentPath String?
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, path])
+}
+
+model Chunk {
+  id         String                       @id @default(cuid())
+  repoId     String
+  sourceType ChunkSource
+  sourceId   String
+  text       String
+  /// Dimension must match EMBED_DIM (packages/models config). Changing it needs a migration.
+  embedding  Unsupported("vector(1024)")?
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([repoId, sourceType])
+}
+
+model AgentRun {
+  id           String         @id @default(cuid())
+  repoId       String
+  kind         AgentRunKind
+  input        Json
+  status       AgentRunStatus @default(running)
+  toolCalls    Json?
+  costEstimate Float          @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  repo        Repo         @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  fixAttempts FixAttempt[]
+  modelCalls  ModelCall[]
+}
+
+model FixAttempt {
+  id         String   @id @default(cuid())
+  runId      String
+  patch      String
+  testOutput String?
+  passed     Boolean  @default(false)
+  prUrl      String?
+  createdAt  DateTime @default(now())
+
+  run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+}
+
+model ModelCall {
+  id        String   @id @default(cuid())
+  runId     String?
+  task      String
+  model     String
+  tokensIn  Int
+  tokensOut Int
+  latencyMs Int
+  cost      Float
+  createdAt DateTime @default(now())
+
+  run AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+
+  @@index([task])
+}
