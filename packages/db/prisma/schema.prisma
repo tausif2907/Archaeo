@@ -47,18 +47,23 @@ enum AgentRunStatus {
 }
 
 model Repo {
-  id            String     @id @default(cuid())
-  url           String     @unique
-  owner         String
-  name          String
-  defaultBranch String?
-  language      String?
-  status        RepoStatus @default(queued)
-  statusMessage String?
+  id             String     @id @default(cuid())
+  url            String     @unique
+  owner          String
+  name           String
+  defaultBranch  String?
+  language       String?
+  status         RepoStatus @default(queued)
+  /// Current ingest stage: clone | parse | history | embed | summarize | done
+  stage          String?
+  statusMessage  String?
+  headSha        String?
+  /// Last successful GitHub PR/issue fetch; later fetches only ask for newer updates
+  githubSyncedAt DateTime?
   /// Free-form counters, e.g. { files, symbols, commits, prs, loc }
-  stats         Json?
-  createdAt     DateTime   @default(now())
-  updatedAt     DateTime   @updatedAt
+  stats          Json?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
   files        File[]
   edges        Edge[]
@@ -94,13 +99,15 @@ model File {
 }
 
 model Symbol {
-  id        String     @id @default(cuid())
-  fileId    String
-  kind      SymbolKind
-  name      String
-  startLine Int
-  endLine   Int
-  summary   String?
+  id            String     @id @default(cuid())
+  fileId        String
+  kind          SymbolKind
+  name          String
+  /// Dotted path within the file, e.g. `Command.invoke`
+  qualifiedName String
+  startLine     Int
+  endLine       Int
+  summary       String?
 
   file     File   @relation(fields: [fileId], references: [id], onDelete: Cascade)
   outEdges Edge[] @relation("EdgeFromSymbol")
@@ -209,6 +216,10 @@ model Chunk {
   repoId     String
   sourceType ChunkSource
   sourceId   String
+  /// For code chunks: the cited range (`path:startLine-endLine`)
+  path       String?
+  startLine  Int?
+  endLine    Int?
   text       String
   /// Dimension must match EMBED_DIM (packages/models config). Changing it needs a migration.
   embedding  Unsupported("vector(1024)")?
@@ -216,6 +227,8 @@ model Chunk {
   repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
 
   @@index([repoId, sourceType])
+  @@index([repoId, path])
+  @@index([sourceId])
 }
 
 model AgentRun {
