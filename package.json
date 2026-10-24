@@ -15,7 +15,9 @@
     "db:generate": "pnpm --filter @archaeo/db generate",
     "db:migrate": "pnpm --filter @archaeo/db migrate:dev",
     "db:deploy": "pnpm --filter @archaeo/db migrate:deploy",
-    "postinstall": "pnpm --filter @archaeo/db generate"
+    "postinstall": "pnpm --filter @archaeo/db generate",
+    "eval:history": "pnpm --filter @archaeo/evals history",
+    "check:citations": "pnpm --filter @archaeo/evals check:citations"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

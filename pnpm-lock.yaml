@@ -35,9 +35,15 @@ importers:
 
   apps/api:
     dependencies:
+      '@archaeo/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@archaeo/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@archaeo/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
       '@archaeo/models':
         specifier: workspace:*
         version: link:../../packages/models
@@ -87,6 +93,9 @@ importers:
 
   apps/worker:
     dependencies:
+      '@archaeo/agent':
+        specifier: workspace:*
+        version: link:../../packages/agent
       '@archaeo/db':
         specifier: workspace:*
         version: link:../../packages/db
@@ -106,7 +115,20 @@ importers:
         specifier: ^5.4.2
         version: 5.11.1
 
-  packages/agent: {}
+  packages/agent:
+    dependencies:
+      '@archaeo/db':
+        specifier: workspace:*
+        version: link:../db
+      '@archaeo/ingest':
+        specifier: workspace:*
+        version: link:../ingest
+      '@archaeo/models':
+        specifier: workspace:*
+        version: link:../models
+      '@archaeo/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/db:
     dependencies:
@@ -124,7 +146,20 @@ importers:
         specifier: ^6.1.0
         version: 6.19.3(typescript@5.9.3)
 
-  packages/evals: {}
+  packages/evals:
+    dependencies:
+      '@archaeo/agent':
+        specifier: workspace:*
+        version: link:../agent
+      '@archaeo/db':
+        specifier: workspace:*
+        version: link:../db
+      '@archaeo/models':
+        specifier: workspace:*
+        version: link:../models
+      '@archaeo/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/ingest:
     dependencies:

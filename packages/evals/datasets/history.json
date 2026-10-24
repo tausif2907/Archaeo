@@ -1,0 +1,56 @@
+{
+  "repo": "https://github.com/pallets/click",
+  "notes": "Expected answers were looked up with git (`git log --follow --diff-filter=A`, `git log -L`) and the PR merge commits that contain them. Phase 5 grows this to ~20 questions.",
+  "questions": [
+    {
+      "id": "shell-completion-origin",
+      "question": "Why does src/click/shell_completion.py exist?",
+      "target": { "path": "src/click/shell_completion.py" },
+      "expected": {
+        "introducedSha": "3c4cacb1bba9f2b6f62628cf1783ce64aed62436",
+        "prNumbers": [1622],
+        "facts": ["introduced 2020-08-04 by Amy", "the shell completion system was redesigned", "merged in PR #1622 Redesign Completion System"]
+      }
+    },
+    {
+      "id": "compat-origin",
+      "question": "Why does src/click/_compat.py exist?",
+      "target": { "path": "src/click/_compat.py" },
+      "expected": {
+        "introducedSha": "0ed40c8",
+        "prNumbers": [],
+        "facts": ["introduced in April 2014 by Armin Ronacher when click was split up into a package", "followed through the move from click/ to src/click/"]
+      }
+    },
+    {
+      "id": "globals-origin",
+      "question": "Why does src/click/globals.py exist?",
+      "target": { "path": "src/click/globals.py" },
+      "expected": {
+        "introducedSha": "695ca34",
+        "prNumbers": [379],
+        "facts": ["introduced 2015-07-14 by Armin Ronacher", "adds thread-local access to the current context", "PR #379"]
+      }
+    },
+    {
+      "id": "testing-origin",
+      "question": "Why does src/click/testing.py exist?",
+      "target": { "path": "src/click/testing.py" },
+      "expected": {
+        "introducedSha": "3f695c6",
+        "prNumbers": [],
+        "facts": ["introduced 2014-04-29 by Armin Ronacher as the start of test helpers (CliRunner)"]
+      }
+    },
+    {
+      "id": "parameter-source-origin",
+      "question": "Why does ParameterSource exist in src/click/core.py?",
+      "target": { "path": "src/click/core.py", "symbol": "ParameterSource" },
+      "expected": {
+        "introducedSha": "af24c8d",
+        "prNumbers": [1329],
+        "facts": ["introduced 2019-05-31 by Joshua Storck", "lets the context tell where a parameter's value came from", "PR #1329", "became an Enum in PR #1535"]
+      }
+    }
+  ]
+}

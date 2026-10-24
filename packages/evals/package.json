@@ -8,6 +8,14 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "history": "tsx src/history.ts",
+    "check:citations": "tsx src/check-citations.ts"
+  },
+  "dependencies": {
+    "@archaeo/agent": "workspace:*",
+    "@archaeo/db": "workspace:*",
+    "@archaeo/models": "workspace:*",
+    "@archaeo/shared": "workspace:*"
   }
 }
