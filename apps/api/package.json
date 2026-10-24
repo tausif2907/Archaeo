@@ -10,7 +10,9 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@archaeo/agent": "workspace:*",
     "@archaeo/db": "workspace:*",
+    "@archaeo/ingest": "workspace:*",
     "@archaeo/models": "workspace:*",
     "@archaeo/shared": "workspace:*",
     "@fastify/cors": "^10.0.1",

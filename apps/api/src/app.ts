@@ -1,7 +1,19 @@
 import cors from "@fastify/cors";
 import Fastify, { type FastifyInstance } from "fastify";
+import { WhyError } from "@archaeo/agent";
 import type { Repo } from "@archaeo/db";
-import { CreateRepoInput, parseGitHubUrl, type RepoCounts, type RepoDto, type RepoProgressDto } from "@archaeo/shared";
+import {
+  CreateRepoInput,
+  parseGitHubUrl,
+  WhyInput,
+  type ErasResponse,
+  type FileEntry,
+  type RepoCounts,
+  type RepoDto,
+  type RepoProgressDto,
+  type SymbolEntry,
+  type WhyResult,
+} from "@archaeo/shared";
 import { buildStages } from "./progress";
 
 /** Narrow persistence + queue surface the routes need, so tests can swap in fakes. */
@@ -14,8 +26,20 @@ export interface RepoStore {
   counts(id: string): Promise<RepoCounts>;
 }
 
+/** "The Past": eras and why-does-this-exist. */
+export interface HistoryService {
+  eras(repoId: string): Promise<ErasResponse>;
+  /** Queue era detection + narratives with `force` (rewrite even unchanged eras) */
+  regenerateEras(repoId: string): Promise<void>;
+  files(repoId: string): Promise<FileEntry[]>;
+  symbols(repoId: string, path: string): Promise<SymbolEntry[]>;
+  /** Throws WhyError for bad targets */
+  why(repo: Repo, input: WhyInput): Promise<WhyResult>;
+}
+
 export interface AppDeps {
   repos: RepoStore;
+  history: HistoryService;
   enqueueIngest(repoId: string): Promise<void>;
   healthChecks?: Record<string, () => Promise<unknown>>;
   webOrigin?: string;
@@ -95,6 +119,50 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const queued = await deps.repos.markQueued(repo.id);
     await deps.enqueueIngest(repo.id);
     return reply.code(202).send(toRepoDto(queued));
+  });
+
+  // ------------------------------------------------------------ The Past
+
+  app.get<{ Params: { id: string } }>("/repos/:id/eras", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    return deps.history.eras(repo.id);
+  });
+
+  app.post<{ Params: { id: string } }>("/repos/:id/eras", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    if (repo.status !== "ready") return reply.code(409).send({ error: "Repo is not ingested yet" });
+    if (repo.erasStatus === "pending" || repo.erasStatus === "running") return reply.code(409).send({ error: "Eras are already being generated" });
+    await deps.history.regenerateEras(repo.id);
+    return reply.code(202).send({ status: "pending" });
+  });
+
+  app.get<{ Params: { id: string } }>("/repos/:id/files", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    return deps.history.files(repo.id);
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>("/repos/:id/symbols", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    if (!req.query.path) return reply.code(400).send({ error: "path is required" });
+    return deps.history.symbols(repo.id, req.query.path);
+  });
+
+  app.post<{ Params: { id: string } }>("/repos/:id/why", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    if (repo.status !== "ready") return reply.code(409).send({ error: "Repo is not ingested yet" });
+    const input = WhyInput.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Invalid input" });
+    try {
+      return await deps.history.why(repo, input.data);
+    } catch (err) {
+      if (err instanceof WhyError) return reply.code(err.status).send({ error: err.message });
+      throw err;
+    }
   });
 
   return app;

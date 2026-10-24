@@ -4,13 +4,16 @@ import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { PrismaCallRecorder, prisma, repoCounts } from "@archaeo/db";
 import { configureModels } from "@archaeo/models";
-import { QUEUES, type IngestJobData } from "@archaeo/shared";
+import { QUEUES, type ErasJobData, type IngestJobData } from "@archaeo/shared";
 import { buildApp } from "./app";
+import { createHistoryService } from "./history";
 
-configureModels({ recorder: new PrismaCallRecorder() });
+const models = configureModels({ recorder: new PrismaCallRecorder() });
 
 const redis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
 const ingestQueue = new Queue<IngestJobData>(QUEUES.ingest, { connection: redis });
+const erasQueue = new Queue<ErasJobData>(QUEUES.eras, { connection: redis });
+const jobOpts = { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 } as const;
 
 const app = await buildApp({
   webOrigin: process.env.WEB_ORIGIN,
@@ -22,8 +25,11 @@ const app = await buildApp({
     markQueued: (id) => prisma.repo.update({ where: { id }, data: { status: "queued", stage: null, statusMessage: null } }),
     counts: (id) => repoCounts(prisma, id),
   },
+  history: createHistoryService(prisma, models, async (repoId) => {
+    await erasQueue.add("eras", { repoId, force: true }, jobOpts);
+  }),
   enqueueIngest: async (repoId) => {
-    await ingestQueue.add("ingest", { repoId }, { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 });
+    await ingestQueue.add("ingest", { repoId }, jobOpts);
   },
   healthChecks: {
     db: () => prisma.$queryRaw`SELECT 1`,
@@ -37,7 +43,7 @@ await app.listen({ port, host: "0.0.0.0" });
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
     await app.close();
-    await ingestQueue.close();
+    await Promise.all([ingestQueue.close(), erasQueue.close()]);
     redis.disconnect();
     await prisma.$disconnect();
     process.exit(0);

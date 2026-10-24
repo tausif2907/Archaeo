@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Repo } from "@archaeo/db";
 import type { RepoCounts } from "@archaeo/shared";
-import { buildApp, type RepoStore } from "./app";
+import { WhyError } from "@archaeo/agent";
+import { buildApp, type HistoryService, type RepoStore } from "./app";
 import { buildStages } from "./progress";
 
 const ZERO: RepoCounts = {
@@ -41,6 +42,8 @@ function memoryStore(): RepoStore & { rows: Repo[] } {
         statusMessage: null,
         headSha: null,
         githubSyncedAt: null,
+        erasStatus: null,
+        erasMessage: null,
         stats: null,
         createdAt: now,
         updatedAt: now,
@@ -51,11 +54,26 @@ function memoryStore(): RepoStore & { rows: Repo[] } {
   };
 }
 
+function fakeHistory(): HistoryService & { regenerated: string[] } {
+  const regenerated: string[] = [];
+  return {
+    regenerated,
+    eras: async () => ({ status: "ready", message: null, eras: [] }),
+    regenerateEras: async (id) => void regenerated.push(id),
+    files: async () => [{ path: "src/a.py", language: "python", loc: 3 }],
+    symbols: async () => [],
+    why: async (_repo, input) => {
+      if (input.path === "missing.py") throw new WhyError("File not found: missing.py", 404);
+      return { answer: `because [abc1234]`, target: { path: input.path } } as never;
+    },
+  };
+}
+
 describe("api", () => {
   it("creates a repo once and enqueues ingest", async () => {
     const repos = memoryStore();
     const enqueued: string[] = [];
-    const app = await buildApp({ repos, enqueueIngest: async (id) => void enqueued.push(id) });
+    const app = await buildApp({ history: fakeHistory(), repos, enqueueIngest: async (id) => void enqueued.push(id) });
 
     const first = await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/pallets/click.git" } });
     expect(first.statusCode).toBe(201);
@@ -72,7 +90,7 @@ describe("api", () => {
   });
 
   it("rejects non-GitHub URLs", async () => {
-    const app = await buildApp({ repos: memoryStore(), enqueueIngest: async () => {} });
+    const app = await buildApp({ history: fakeHistory(), repos: memoryStore(), enqueueIngest: async () => {} });
     const res = await app.inject({ method: "POST", url: "/repos", payload: { url: "https://example.com/x" } });
     expect(res.statusCode).toBe(400);
   });
@@ -80,7 +98,7 @@ describe("api", () => {
   it("re-ingests only when no ingest is in flight", async () => {
     const repos = memoryStore();
     const enqueued: string[] = [];
-    const app = await buildApp({ repos, enqueueIngest: async (id) => void enqueued.push(id) });
+    const app = await buildApp({ history: fakeHistory(), repos, enqueueIngest: async (id) => void enqueued.push(id) });
     await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
 
     expect((await app.inject({ method: "POST", url: "/repos/repo1/ingest" })).statusCode).toBe(409);
@@ -93,7 +111,7 @@ describe("api", () => {
 
   it("returns stage progress with counts", async () => {
     const repos = memoryStore();
-    const app = await buildApp({ repos, enqueueIngest: async () => {} });
+    const app = await buildApp({ history: fakeHistory(), repos, enqueueIngest: async () => {} });
     await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
     Object.assign(repos.rows[0]!, { status: "ingesting", stage: "history" });
 
@@ -105,6 +123,7 @@ describe("api", () => {
 
   it("reports degraded health when a check fails", async () => {
     const app = await buildApp({
+      history: fakeHistory(),
       repos: memoryStore(),
       enqueueIngest: async () => {},
       healthChecks: { db: async () => 1, redis: async () => Promise.reject(new Error("down")) },
@@ -112,6 +131,43 @@ describe("api", () => {
     const res = await app.inject({ method: "GET", url: "/health" });
     expect(res.statusCode).toBe(503);
     expect(res.json()).toEqual({ status: "degraded", checks: { db: "ok", redis: "down" } });
+  });
+});
+
+describe("the past", () => {
+  async function readyApp() {
+    const repos = memoryStore();
+    const history = fakeHistory();
+    const app = await buildApp({ history, repos, enqueueIngest: async () => {} });
+    await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
+    return { app, repos, history };
+  }
+
+  it("only answers why-questions once the repo is ingested, and validates input", async () => {
+    const { app, repos } = await readyApp();
+    const ask = (payload: object) => app.inject({ method: "POST", url: "/repos/repo1/why", payload });
+    expect((await ask({ path: "src/a.py" })).statusCode).toBe(409);
+    repos.rows[0]!.status = "ready";
+    expect((await ask({ path: "" })).statusCode).toBe(400);
+    expect((await ask({ path: "src/a.py", startLine: 3 })).json().error).toBe("startLine and endLine go together");
+    const missing = await ask({ path: "missing.py" });
+    expect(missing.statusCode).toBe(404);
+    expect(missing.json().error).toBe("File not found: missing.py");
+    const ok = await ask({ path: "src/a.py", symbol: "main" });
+    expect(ok.statusCode).toBe(200);
+    expect(ok.json().answer).toBe("because [abc1234]");
+  });
+
+  it("regenerates eras unless a run is already pending", async () => {
+    const { app, repos, history } = await readyApp();
+    repos.rows[0]!.status = "ready";
+    expect((await app.inject({ method: "POST", url: "/repos/repo1/eras" })).statusCode).toBe(202);
+    expect(history.regenerated).toEqual(["repo1"]);
+    repos.rows[0]!.erasStatus = "running";
+    expect((await app.inject({ method: "POST", url: "/repos/repo1/eras" })).statusCode).toBe(409);
+    expect((await app.inject({ method: "GET", url: "/repos/repo1/eras" })).json()).toEqual({ status: "ready", message: null, eras: [] });
+    expect((await app.inject({ method: "GET", url: "/repos/repo1/symbols" })).statusCode).toBe(400);
+    expect((await app.inject({ method: "GET", url: "/repos/repo1/files" })).json()).toHaveLength(1);
   });
 });
 
