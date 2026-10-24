@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join } from "node:path";
 import { config } from "dotenv";
 
 /** Walks up from `start` to the directory containing pnpm-workspace.yaml. */
@@ -17,6 +17,16 @@ export function findRepoRoot(start: string = process.cwd()): string {
 export function loadEnv(): void {
   const file = join(findRepoRoot(), ".env");
   if (existsSync(file)) config({ path: file, quiet: true });
+}
+
+/** Root folder for repo clones (`WORKSPACE_DIR`, default `<repo root>/.workspace`). */
+export function resolveWorkspaceDir(): string {
+  const ws = process.env.WORKSPACE_DIR || ".workspace";
+  return isAbsolute(ws) ? ws : join(findRepoRoot(), ws);
+}
+
+export function repoCloneDir(owner: string, name: string): string {
+  return join(resolveWorkspaceDir(), owner, name);
 }
 
 export function requireEnv(name: string): string {

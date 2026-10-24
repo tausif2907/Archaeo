@@ -92,7 +92,92 @@ export const QUEUES = {
   /** Jobs: "ingest" (the pipeline) and "finalize" (flow parent that marks the repo ready) */
   ingest: "ingest",
   summarize: "summarize",
+  eras: "eras",
 } as const;
+
+export interface ErasJobData {
+  repoId: string;
+  /** Rewrite narratives even when an era's evidence is unchanged */
+  force?: boolean;
+}
+
+// ---------------------------------------------------------------- The Past
+
+export interface EraStats {
+  commits: number;
+  contributors: number;
+  topAuthors: { name: string; commits: number }[];
+  topAreas: { area: string; percent: number }[];
+  releases: string[];
+  /** Narrative was assembled from evidence because model output was unusable */
+  fallback: boolean;
+}
+
+export interface EraDto {
+  id: string;
+  title: string;
+  startDate: string;
+  endDate: string;
+  narrative: string | null;
+  stats: EraStats | null;
+  keyCommits: { sha: string; shortSha: string; subject: string; author: string; date: string }[];
+  keyPrs: { number: number; title: string; mergedAt: string | null }[];
+}
+
+export interface ErasResponse {
+  /** pending | running | ready | failed | null (never generated) */
+  status: string | null;
+  message: string | null;
+  eras: EraDto[];
+}
+
+export const WhyInput = z
+  .object({
+    path: z.string().min(1).max(500),
+    symbol: z.string().min(1).max(300).optional(),
+    startLine: z.number().int().positive().optional(),
+    endLine: z.number().int().positive().optional(),
+  })
+  .refine((v) => (v.startLine === undefined) === (v.endLine === undefined), { message: "startLine and endLine go together" });
+export type WhyInput = z.infer<typeof WhyInput>;
+
+export interface WhyCommit {
+  sha: string;
+  shortSha: string;
+  date: string;
+  author: string;
+  subject: string;
+  linesChanged: number | null;
+  prNumbers: number[];
+}
+
+export interface WhyResult {
+  target: { path: string; symbol: string | null; startLine: number | null; endLine: number | null };
+  totalCommits: number;
+  introduced: WhyCommit;
+  latest: WhyCommit;
+  majorChanges: WhyCommit[];
+  blame: { sha: string; shortSha: string; author: string; date: string; summary: string; lines: number; percent: number }[];
+  pullRequests: { number: number; title: string; mergedAt: string | null; excerpt: string }[];
+  /** Markdown with citations like [abc1234] and [#123] */
+  answer: string;
+  fallback: boolean;
+  invalidCitations: string[];
+}
+
+export interface FileEntry {
+  path: string;
+  language: string | null;
+  loc: number;
+}
+
+export interface SymbolEntry {
+  name: string;
+  qualifiedName: string;
+  kind: string;
+  startLine: number;
+  endLine: number;
+}
 
 export interface IngestJobData {
   repoId: string;
