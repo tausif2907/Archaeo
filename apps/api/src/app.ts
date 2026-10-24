@@ -1,11 +1,19 @@
 import cors from "@fastify/cors";
-import Fastify, { type FastifyInstance } from "fastify";
-import { WhyError } from "@archaeo/agent";
+import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
+import { FlowError, WhyError } from "@archaeo/agent";
 import type { Repo } from "@archaeo/db";
 import {
+  AskInput,
   CreateRepoInput,
+  FlowInput,
   parseGitHubUrl,
   WhyInput,
+  type AgentEvent,
+  type AskResult,
+  type CodeFile,
+  type FlowTrace,
+  type MapData,
+  type SymbolHit,
   type ErasResponse,
   type FileEntry,
   type RepoCounts,
@@ -37,9 +45,20 @@ export interface HistoryService {
   why(repo: Repo, input: WhyInput): Promise<WhyResult>;
 }
 
+/** "The Present": architecture map, code viewer, Q&A agent, request-flow walkthrough. */
+export interface PresentService {
+  map(repoId: string): Promise<MapData>;
+  file(repo: Repo, path: string): Promise<CodeFile | null>;
+  searchSymbols(repoId: string, q: string): Promise<SymbolHit[]>;
+  ask(repo: Repo, question: string, onEvent: (e: AgentEvent) => void, signal: AbortSignal): Promise<AskResult>;
+  /** Throws FlowError for unknown entry points */
+  flow(repo: Repo, input: FlowInput): Promise<FlowTrace>;
+}
+
 export interface AppDeps {
   repos: RepoStore;
   history: HistoryService;
+  present: PresentService;
   enqueueIngest(repoId: string): Promise<void>;
   healthChecks?: Record<string, () => Promise<unknown>>;
   webOrigin?: string;
@@ -162,6 +181,89 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     } catch (err) {
       if (err instanceof WhyError) return reply.code(err.status).send({ error: err.message });
       throw err;
+    }
+  });
+
+  // ------------------------------------------------------------ The Present
+
+  /** Loads a repo that must be ingested; sends the error reply itself and returns null otherwise. */
+  const readyRepo = async (id: string, reply: FastifyReply): Promise<Repo | null> => {
+    const repo = await deps.repos.findById(id);
+    if (!repo) {
+      reply.code(404).send({ error: "Repo not found" });
+      return null;
+    }
+    if (repo.status !== "ready") {
+      reply.code(409).send({ error: "Repo is not ingested yet" });
+      return null;
+    }
+    return repo;
+  };
+
+  app.get<{ Params: { id: string } }>("/repos/:id/map", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    return repo ? deps.present.map(repo.id) : reply;
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { path?: string } }>("/repos/:id/file", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
+    if (!req.query.path) return reply.code(400).send({ error: "path is required" });
+    const file = await deps.present.file(repo, req.query.path);
+    return file ?? reply.code(404).send({ error: `File not found: ${req.query.path}` });
+  });
+
+  app.get<{ Params: { id: string }; Querystring: { q?: string } }>("/repos/:id/symbols/search", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
+    const q = req.query.q?.trim() ?? "";
+    return q.length < 2 ? [] : deps.present.searchSymbols(repo.id, q);
+  });
+
+  app.post<{ Params: { id: string } }>("/repos/:id/flow", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
+    const input = FlowInput.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Invalid input" });
+    try {
+      return await deps.present.flow(repo, input.data);
+    } catch (err) {
+      if (err instanceof FlowError) return reply.code(err.status).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  /** Q&A agent, streamed as Server-Sent Events (run, thinking, tool_call, tool_result, limit, answer, error, done). */
+  app.post<{ Params: { id: string } }>("/repos/:id/ask", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
+    const input = AskInput.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Invalid input" });
+
+    reply.hijack();
+    const origin = deps.webOrigin ?? req.headers.origin ?? "*";
+    reply.raw.writeHead(200, {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache, no-transform",
+      connection: "keep-alive",
+      "x-accel-buffering": "no",
+      "access-control-allow-origin": origin,
+      vary: "Origin",
+    });
+    const abort = new AbortController();
+    reply.raw.on("close", () => {
+      if (!reply.raw.writableFinished) abort.abort();
+    });
+    const send = (event: string, data: unknown) => {
+      if (!reply.raw.writableEnded) reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+    };
+    try {
+      await deps.present.ask(repo, input.data.question, (e) => send(e.type, e), abort.signal);
+    } catch (err) {
+      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      send("done", {});
+      reply.raw.end();
     }
   });
 

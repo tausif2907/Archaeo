@@ -7,6 +7,8 @@ import { configureModels } from "@archaeo/models";
 import { QUEUES, type ErasJobData, type IngestJobData } from "@archaeo/shared";
 import { buildApp } from "./app";
 import { createHistoryService } from "./history";
+import { createPresentService } from "./present";
+import { loadAgentLimits } from "@archaeo/agent";
 
 const models = configureModels({ recorder: new PrismaCallRecorder() });
 
@@ -28,6 +30,7 @@ const app = await buildApp({
   history: createHistoryService(prisma, models, async (repoId) => {
     await erasQueue.add("eras", { repoId, force: true }, jobOpts);
   }),
+  present: createPresentService(prisma, models, loadAgentLimits()),
   enqueueIngest: async (repoId) => {
     await ingestQueue.add("ingest", { repoId }, jobOpts);
   },
