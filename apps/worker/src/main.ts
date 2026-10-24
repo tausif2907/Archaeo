@@ -21,7 +21,7 @@ const log = (msg: string) => console.log(`[worker] ${msg}`);
 async function handleIngest(job: Job<IngestJobData>): Promise<void> {
   const { repoId } = job.data;
   if (job.name === "finalize") {
-    await finalizeIngest(repoId, prisma);
+    await finalizeIngest(repoId, prisma, models);
     log(`repo ${repoId} ready`);
     await prisma.repo.update({ where: { id: repoId }, data: { erasStatus: "pending", erasMessage: null } });
     await erasQueue.add("eras", { repoId }, { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 });

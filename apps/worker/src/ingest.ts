@@ -37,6 +37,12 @@ export interface IngestResult {
   summarizeJobs: SummarizeJobData[];
 }
 
+/**
+ * Bump when parsing or chunking changes: the next ingest rebuilds symbols, chunks and embeddings for
+ * every file (summaries are kept for files whose content is unchanged).
+ */
+export const INDEX_VERSION = 2;
+
 /** Commits stored per commit row are capped so a giant vendoring commit doesn't bloat the JSON column. */
 const MAX_FILES_PER_COMMIT = 300;
 
@@ -64,7 +70,8 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
 
   const sources = await stage("parse", "Parsing source files", async () => {
     const files = await scanSourceFiles(dir, await listTrackedFiles(dir), { maxLoc: config.maxLoc });
-    await writeCode(deps, repoId, files);
+    const stale = ((repo.stats as RepoStats | null)?.indexVersion ?? 1) < INDEX_VERSION;
+    await writeCode(deps, repoId, files, stale);
     return files;
   });
 
@@ -89,6 +96,7 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
     warnings,
     durationsMs,
     summarizeTotal: await summarizeTotal(prisma, repoId, config.summarizeMaxCommits),
+    indexVersion: INDEX_VERSION,
   };
   await prisma.repo.update({ where: { id: repoId }, data: { stats: stats as Prisma.InputJsonValue } });
   return { summarizeJobs };
@@ -102,7 +110,7 @@ function dominantLanguage(files: SourceFile[]): string | null {
 
 // ---------------------------------------------------------------- parse
 
-async function writeCode({ prisma, log }: IngestDeps, repoId: string, sources: SourceFile[]): Promise<void> {
+async function writeCode({ prisma, log }: IngestDeps, repoId: string, sources: SourceFile[], reindexAll: boolean): Promise<void> {
   const parser = await createParser();
   const parsed: ParsedFile[] = [];
   const parsedByPath = new Map<string, ParsedFile>();
@@ -123,8 +131,8 @@ async function writeCode({ prisma, log }: IngestDeps, repoId: string, sources: S
     await prisma.file.deleteMany({ where: { id: { in: stale.map((f) => f.id) } } });
   }
 
-  const changed = sources.filter((s) => existingByPath.get(s.path)?.hash !== s.hash);
-  log(`  ${sources.length} source files, ${changed.length} new or changed, ${stale.length} removed`);
+  const changed = sources.filter((s) => reindexAll || existingByPath.get(s.path)?.hash !== s.hash);
+  log(`  ${sources.length} source files, ${changed.length} ${reindexAll ? "re-indexed (index version changed)" : "new or changed"}, ${stale.length} removed`);
 
   for (const src of changed) {
     const p = parsedByPath.get(src.path);
@@ -133,7 +141,8 @@ async function writeCode({ prisma, log }: IngestDeps, repoId: string, sources: S
       const file = await tx.file.upsert({
         where: { repoId_path: { repoId, path: src.path } },
         create: { repoId, path: src.path, language: src.language, hash: src.hash, loc: src.loc, complexity: p.complexity },
-        update: { language: src.language, hash: src.hash, loc: src.loc, complexity: p.complexity, summary: null },
+        // Keep the summary unless the content itself changed.
+        update: { language: src.language, hash: src.hash, loc: src.loc, complexity: p.complexity, ...(existingByPath.get(src.path)?.hash !== src.hash ? { summary: null } : {}) },
       });
       await tx.symbol.deleteMany({ where: { fileId: file.id } });
       await tx.chunk.deleteMany({ where: { repoId, sourceType: "code", path: src.path } });

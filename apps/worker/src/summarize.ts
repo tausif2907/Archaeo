@@ -4,6 +4,7 @@ import { repoCounts, type Prisma, type PrismaClient } from "@archaeo/db";
 import type { Models } from "@archaeo/models";
 import type { RepoStats, SummarizeJobData } from "@archaeo/shared";
 import type { IngestConfig } from "./config";
+import { summarizeModules } from "./modules";
 
 const FILE_INSTRUCTION =
   "You summarize source files for developers new to a codebase. In 1-3 sentences, say what this file is responsible for and its key functions or classes. No preamble.";
@@ -53,8 +54,10 @@ export async function summarizeBatch(job: SummarizeJobData, { prisma, models, co
 }
 
 /** Flow parent: runs after every summarize batch has finished (or failed). */
-export async function finalizeIngest(repoId: string, prisma: PrismaClient): Promise<void> {
+export async function finalizeIngest(repoId: string, prisma: PrismaClient, models: Pick<Models, "summarizeCheap">): Promise<void> {
   const repo = await prisma.repo.findUniqueOrThrow({ where: { id: repoId } });
+  await prisma.repo.update({ where: { id: repoId }, data: { statusMessage: "Summarizing folders and the repository" } });
+  await summarizeModules(repoId, prisma, models, `${repo.owner}/${repo.name}`);
   const counts = await repoCounts(prisma, repoId);
   const prev = (repo.stats as RepoStats | null) ?? {};
   const warnings = prev.warnings ?? [];
