@@ -60,6 +60,9 @@ model Repo {
   headSha        String?
   /// Last successful GitHub PR/issue fetch; later fetches only ask for newer updates
   githubSyncedAt DateTime?
+  /// Era generation: pending | running | ready | failed
+  erasStatus     String?
+  erasMessage    String?
   /// Free-form counters, e.g. { files, symbols, commits, prs, loc }
   stats          Json?
   createdAt      DateTime   @default(now())
@@ -163,6 +166,8 @@ model PullRequest {
   title            String
   body             String?
   mergedAt         DateTime?
+  mergeCommitSha   String?
+  /// Merge/squash commit plus every commit from the PR branch
   linkedCommitShas String[]
 
   repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
@@ -193,6 +198,10 @@ model Era {
   narrative     String?
   keyCommitShas String[]
   keyPrNumbers  Int[]
+  /// { commits, contributors, topAreas, topAuthors, releases }
+  stats         Json?
+  /// Hash of the era's boundaries and key items; narratives are reused while it is unchanged
+  fingerprint   String?
 
   repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
 
