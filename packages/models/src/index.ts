@@ -41,28 +41,25 @@ export function createModels(options: CreateModelsOptions = {}): Models {
   const providers = { ...defaultProviders(config), ...options.providers };
   const recorder = options.recorder;
 
-  async function run<T>(task: ModelTask, opts: CallOptions, fn: (p: ModelProvider, model: string) => Promise<ProviderResult<T>>): Promise<{ output: T; model: string; tokensIn: number; tokensOut: number }> {
+  async function run<T>(
+    task: ModelTask,
+    opts: CallOptions,
+    fn: (p: ModelProvider, model: string) => Promise<ProviderResult<T>>,
+  ): Promise<{ output: T; model: string; tokensIn: number; tokensOut: number; cost: number }> {
     const route = config.tasks[task];
     const provider = providers[route.provider];
     const started = performance.now();
     const res = await fn(provider, route.model);
     const latencyMs = Math.round(performance.now() - started);
     const { tokensIn, tokensOut } = res.usage;
-    await recorder?.record({
-      runId: opts.runId,
-      task,
-      model: route.model,
-      tokensIn,
-      tokensOut,
-      latencyMs,
-      cost: estimateCost(config.pricing, route.model, tokensIn, tokensOut),
-    });
-    return { output: res.output, model: route.model, tokensIn, tokensOut };
+    const cost = estimateCost(config.pricing, route.model, tokensIn, tokensOut);
+    await recorder?.record({ runId: opts.runId, task, model: route.model, tokensIn, tokensOut, latencyMs, cost });
+    return { output: res.output, model: route.model, tokensIn, tokensOut, cost };
   }
 
   async function chatTask(task: "reason" | "writeCode", messages: ChatMessage[], tools: ToolDefinition[] | undefined, opts: CallOptions): Promise<AgentStep> {
     const r = await run(task, opts, (p, model) => p.chat(model, messages, tools, opts));
-    return { ...r.output, model: r.model, usage: { tokensIn: r.tokensIn, tokensOut: r.tokensOut } };
+    return { ...r.output, model: r.model, usage: { tokensIn: r.tokensIn, tokensOut: r.tokensOut }, costUsd: r.cost };
   }
 
   return {

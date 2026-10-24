@@ -30,6 +30,8 @@ export interface AgentStep {
   finishReason: "stop" | "tool_calls" | "length";
   model: string;
   usage: Usage;
+  /** Estimated USD cost of this call (0 when the model has no configured price) */
+  costUsd: number;
 }
 
 export interface ImageResult {

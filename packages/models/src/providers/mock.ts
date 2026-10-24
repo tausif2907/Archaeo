@@ -61,6 +61,31 @@ export const MOCK_PATCH = [
   "",
 ].join("\n");
 
+const CODE_REF = /([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?/g;
+
+/**
+ * A deliberately simple "agent" so tool-calling flows run offline: first call whichever tool takes a
+ * `query`, then answer by citing the `path:line` ranges that tool returned. Knows nothing about features.
+ */
+function mockAgentStep(messages: ChatMessage[], tools: ToolDefinition[], question: string): ChatOutput {
+  const toolResults = messages.filter((m) => m.role === "tool");
+  if (toolResults.length === 0) {
+    const searchTool = tools.find((t) => {
+      const required = (t.parameters as { required?: unknown }).required;
+      return Array.isArray(required) && required.includes("query");
+    });
+    if (searchTool) {
+      return { content: "", toolCalls: [{ id: "mock-call-1", name: searchTool.name, arguments: { query: question } }], finishReason: "tool_calls" };
+    }
+  }
+  const evidence = toolResults.map((m) => m.content).join("\n");
+  const refs = [...new Set([...evidence.matchAll(CODE_REF)].map((m) => `${m[1]}:${m[2]}${m[3] ? `-${m[3]}` : ""}`))].slice(0, 5);
+  const content = refs.length
+    ? `[mock answer] The most relevant code for "${question.slice(0, 120)}":\n${refs.map((r) => `- [${r}]`).join("\n")}`
+    : `[mock answer] ${question.slice(0, 200)}`;
+  return { content, toolCalls: [], finishReason: "stop" };
+}
+
 /**
  * Offline provider returning canned outputs so the whole app runs before API keys exist.
  * Tests can queue exact chat replies with `script`, e.g. to drive the agent loop through tool calls.
@@ -89,7 +114,7 @@ export class MockProvider implements ModelProvider {
   async chat(
     model: string,
     messages: ChatMessage[],
-    _tools: ToolDefinition[] | undefined,
+    tools: ToolDefinition[] | undefined,
     _opts: CallOptions,
   ): Promise<ProviderResult<ChatOutput>> {
     const tokensIn = estimateTokens(messagesText(messages));
@@ -99,6 +124,10 @@ export class MockProvider implements ModelProvider {
     }
 
     const lastUser = [...messages].reverse().find((m) => m.role === "user");
+    if (tools?.length) {
+      const output = mockAgentStep(messages, tools, lastUser?.content ?? "");
+      return { output, usage: { tokensIn, tokensOut: estimateTokens(output.content || JSON.stringify(output.toolCalls)) } };
+    }
     const content = model.includes("code")
       ? `[mock patch]\n\`\`\`diff\n${MOCK_PATCH}\`\`\``
       : `[mock answer] ${(lastUser?.content ?? "").slice(0, 200)}`;

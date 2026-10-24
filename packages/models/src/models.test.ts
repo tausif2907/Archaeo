@@ -50,6 +50,25 @@ describe("models contract (mock provider)", () => {
     expect(calls[0]?.runId).toBe("run1");
   });
 
+  it("mock acts as a minimal agent when tools are offered: search first, then cite results", async () => {
+    const { models } = setup();
+    const tools = [
+      { name: "read_file", description: "Read", parameters: { type: "object", required: ["path"] } },
+      { name: "search_code", description: "Search", parameters: { type: "object", required: ["query"] } },
+    ];
+    const question = { role: "user" as const, content: "Where is option parsing?" };
+    const first = await models.reason([question], tools);
+    expect(first.toolCalls).toEqual([{ id: "mock-call-1", name: "search_code", arguments: { query: "Where is option parsing?" } }]);
+    expect(first.costUsd).toBe(0);
+    const second = await models.reason(
+      [question, { role: "assistant", content: "", toolCalls: first.toolCalls }, { role: "tool", toolCallId: "mock-call-1", content: "1. src/parser.py:10-40 OptionParser\n2. src/core.py:5 x" }],
+      tools,
+    );
+    expect(second.finishReason).toBe("stop");
+    expect(second.content).toContain("- [src/parser.py:10-40]");
+    expect(second.content).toContain("- [src/core.py:5]");
+  });
+
   it("writeCode returns a unified diff", async () => {
     const { models, calls, config } = setup();
     const step = await models.writeCode([{ role: "user", content: "Fix the bug" }]);
