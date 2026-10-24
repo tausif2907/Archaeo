@@ -157,14 +157,14 @@ Each call records model, tokens in/out, latency, and estimated cost to a `ModelC
 
 ## 8. Phase 3 — The Present (Days 4–6)
 
-- [ ] Module summaries bottom-up: files, then folders, then a repo overview (`Module`)
-- [ ] **Architecture map** (React Flow): nodes are modules; edges are aggregated imports; node size is LOC or complexity; color is churn (hotspots). Click a node to see its summary and key files
-- [ ] **Agent loop** in `packages/agent`:
+- [x] Module summaries bottom-up: files, then folders, then a repo overview (`Module`)
+- [x] **Architecture map** (React Flow): nodes are modules; edges are aggregated imports; node size is LOC or complexity; color is churn (hotspots). Click a node to see its summary and key files
+- [x] **Agent loop** in `packages/agent`:
   - Tools: `search_code` (vector plus keyword), `read_file(path, startLine?, endLine?)`, `get_callers(symbol)`, `get_callees(symbol)`, `git_blame(path, line)`, `list_dir(path)`
   - Limits per run: max 10 tool calls, 90 s, cost cap; all configurable
   - Streams steps to the UI over SSE
-- [ ] **Q&A chat** UI: answers must cite `path:line` ranges that link into a code viewer
-- [ ] **Request-flow walkthrough:** given an entry point (route or CLI command), the agent traces the call path and the UI highlights each hop on the map with a one-line explanation
+- [x] **Q&A chat** UI: answers must cite `path:line` ranges that link into a code viewer
+- [x] **Request-flow walkthrough:** given an entry point (route or CLI command), the agent traces the call path and the UI highlights each hop on the map with a one-line explanation
 - [ ] (Optional) Muse Image overview illustration of the architecture
 
 **Acceptance**
@@ -301,3 +301,15 @@ _Record decisions here as they are made (date, decision, reason)._
 - **2026-10-24 — Narratives are reused while an era's evidence fingerprint is unchanged.** "Regenerate" forces a rewrite. Eras run on their own `eras` queue, queued automatically after ingest finalizes.
 - **2026-10-24 — "Why does this exist?" runs synchronously in the API.** It uses `git log --follow` for files and `git log -L` for symbols or line ranges, plus `git blame -w -M`, and caches answers per repo HEAD. The API therefore needs the same `WORKSPACE_DIR` as the worker.
 - **2026-10-24 — Phase 2 acceptance:** `pnpm eval:history` scores 5/5 on hand-checked click questions (introducing commit, linked PR, cited, no invalid citations). `pnpm check:citations` finds 0 invalid citations across 9 eras (17 commit and 40 PR citations).
+- **2026-10-24 — Skipped the optional Muse Image overview illustration** (first item on the cut list, and it needs the live model API).
+- **2026-10-24 — The mock provider acts as a minimal agent when tools are offered.** It calls whichever tool requires a `query`, then answers by citing the `path:line` ranges that tool returned. It knows nothing about features. This lets the agent loop, SSE streaming and UI run end to end offline. `AgentStep` carries `costUsd`, so the agent can enforce a cost cap.
+- **2026-10-24 — Agent loop:** six tools (`search_code`, `read_file`, `get_callers`, `get_callees`, `git_blame`, `list_dir`). Limits are 10 tool calls, 90 s and $0.50 per run (`AGENT_MAX_TOOL_CALLS`, `AGENT_MAX_SECONDS`, `AGENT_MAX_COST_USD`). Model calls and tools race the remaining time. Running out of tool calls gives the model one tool-free turn to answer; time and cost limits stop immediately. Every outcome ends in an answer that starts "I stopped early because I reached …". Unit tests force each limit.
+- **2026-10-24 — `search_code` is hybrid:** pgvector cosine similarity plus IDF-weighted keyword matching (header, path and body), fused by reciprocal rank. tests/examples/docs rank lower unless the question mentions them.
+- **2026-10-24 — Code citations use `[path:start-end]`.** Citations to missing files or lines are removed, and overlong ranges are clamped. If no valid citation is left, the answer falls back to the code the tools actually showed. Each Q&A run is saved as an `AgentRun` (tool calls, cost, answer). Q&A streams over SSE from `POST /repos/:id/ask`.
+- **2026-10-24 — Chunk ranges are the lines a chunk contains.** Class chunks hold only the header, so citations never point at a 700-line class. `INDEX_VERSION` (worker) forces a full re-index of symbols, chunks and embeddings when parsing or chunking changes, keeping summaries for unchanged content.
+- **2026-10-24 — Call-graph precision:** a closure (a function nested in a function) can only be called from its own file. The repo-wide unique-name rule never links application code to test code. An ambiguous `self.method()` call prefers the caller's own class. These rules removed false edges such as `_detect_program_name → test_path_option.exists`, and edges went from 1,830 to 2,118.
+- **2026-10-24 — Module summaries are built bottom-up in the ingest finalize step:** files, then folders, then the repo overview (`Module.path = ""`). Each is reused while its fingerprint (the hash of its child summaries) is unchanged.
+- **2026-10-24 — The architecture map uses a dependency-ordered grid instead of dagre.** On click's 20 visible modules with 76 import edges, every dagre setting needed ~0.35× zoom to fit. The grid (importers first, foundation modules last, wrapped to a 1.6:1 aspect) fits at ~0.85×. Selecting a node highlights its edges and fades the rest. Folders expand and collapse. Node width = LOC, color = churn percentile, and a "hot" badge marks nodes with both high churn and high complexity.
+- **2026-10-24 — The request-flow walkthrough is a static call-graph trace.** Hops are chosen breadth-first (so make_context and invoke both appear) and shown depth-first as a call tree. Callees are ranked caller's own class, then same file, then body size and fan-out, and shown in call order with the calling line. Duplicate definitions (typing `@overload` stubs) resolve to the largest body. Explanations come from one `reason()` call, with docstrings as the fallback.
+- **2026-10-24 — Playwright end-to-end tests** (`pnpm e2e`, needs the stack running with the demo repo ingested): the map draws nodes and edges in under 3 s (measured from navigation start) and folders expand and collapse; Q&A citations open the code viewer; the flow trace highlights hops on the map.
+- **2026-10-24 — Phase 3 acceptance on click:** `pnpm eval:qa` passes 10/10 (a citation of at most 300 lines overlapping an expected symbol, and every citation valid). File recall is 10/10, and the first citation is in an expected file 6/10. Offline, the mock model only lists retrieved code, so this measures retrieval and citation checking, not answer quality. The map draws in ~0.95 s in dev mode. All three limit tests pass.
