@@ -1,5 +1,6 @@
 import { Octokit } from "@octokit/rest";
 import type { CommitInfo } from "./git";
+import { prBranchCommits } from "./links";
 
 export interface PullRequestInfo {
   number: number;
@@ -100,8 +101,14 @@ export function prRefsInMessage(message: string): number[] {
   return [...refs];
 }
 
-/** Maps PR number → commit SHAs in this repo's history (merge commit SHA plus message references). */
-export function linkPullRequests(prs: Pick<PullRequestInfo, "number" | "mergeCommitSha">[], commits: Pick<CommitInfo, "sha" | "message">[]): Map<number, string[]> {
+/**
+ * Maps PR number → commit SHAs in this repo's history: the merge commit SHA, commits whose message
+ * references the PR, and every commit on the PR's branch for `Merge pull request #N` merges.
+ */
+export function linkPullRequests(
+  prs: Pick<PullRequestInfo, "number" | "mergeCommitSha">[],
+  commits: Pick<CommitInfo, "sha" | "message" | "parents" | "committedAt">[],
+): Map<number, string[]> {
   const known = new Set(commits.map((c) => c.sha));
   const byNumber = new Map<number, Set<string>>();
   const add = (n: number, sha: string) => {
@@ -111,5 +118,6 @@ export function linkPullRequests(prs: Pick<PullRequestInfo, "number" | "mergeCom
   };
   for (const c of commits) for (const n of prRefsInMessage(c.message)) add(n, c.sha);
   for (const pr of prs) if (pr.mergeCommitSha && known.has(pr.mergeCommitSha)) add(pr.number, pr.mergeCommitSha);
+  for (const [n, shas] of prBranchCommits(commits)) for (const sha of shas) add(n, sha);
   return new Map([...byNumber].map(([n, set]) => [n, [...set]]));
 }

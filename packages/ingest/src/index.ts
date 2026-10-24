@@ -6,5 +6,6 @@ export * from "./resolve";
 export * from "./callgraph";
 export * from "./git";
 export * from "./github";
+export * from "./links";
 export * from "./scan";
 export * from "./chunk";
