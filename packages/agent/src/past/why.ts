@@ -51,7 +51,9 @@ export async function explainWhy(deps: WhyDeps, target: WhyTarget): Promise<WhyR
       where: { file: { repoId, path }, OR: [{ qualifiedName: target.symbol }, { name: target.symbol }] },
       orderBy: { startLine: "asc" },
     });
-    const sym = symbols.find((s) => s.qualifiedName === target.symbol) ?? symbols[0];
+    // Exact qualified name first; among duplicates (e.g. typing @overload stubs) the largest body is the implementation.
+    const pool = symbols.some((s) => s.qualifiedName === target.symbol) ? symbols.filter((s) => s.qualifiedName === target.symbol) : symbols;
+    const sym = [...pool].sort((a, b) => b.endLine - b.startLine - (a.endLine - a.startLine))[0];
     if (!sym) throw new WhyError(`Symbol ${target.symbol} not found in ${path}`, 404);
     range = { start: sym.startLine, end: sym.endLine, symbol: sym.qualifiedName };
   } else if (target.startLine && target.endLine) {

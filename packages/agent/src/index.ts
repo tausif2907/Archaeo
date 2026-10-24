@@ -1,7 +1,13 @@
-// @archaeo/agent: agent loop, tool registry, run limits, cost tracking; history ("The Past") reasoning
+// @archaeo/agent: agent loop, tool registry, run limits, cost tracking; history and code reasoning
 export * from "./past/areas";
 export * from "./past/eras";
 export * from "./past/citations";
 export * from "./past/narrative";
 export * from "./past/why";
 export { parseJsonObject, cleanExcerpt } from "./past/json";
+export * from "./present/code-refs";
+export * from "./present/tools";
+export * from "./present/limits";
+export * from "./present/loop";
+export * from "./present/ask";
+export * from "./present/flow";
