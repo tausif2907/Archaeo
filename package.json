@@ -17,10 +17,13 @@
     "db:deploy": "pnpm --filter @archaeo/db migrate:deploy",
     "postinstall": "pnpm --filter @archaeo/db generate",
     "eval:history": "pnpm --filter @archaeo/evals history",
-    "check:citations": "pnpm --filter @archaeo/evals check:citations"
+    "check:citations": "pnpm --filter @archaeo/evals check:citations",
+    "eval:qa": "pnpm --filter @archaeo/evals qa",
+    "e2e": "pnpm --filter @archaeo/web e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
+    "@playwright/test": "1.49.1",
     "@types/node": "^22.10.0",
     "eslint": "^9.17.0",
     "globals": "^15.14.0",

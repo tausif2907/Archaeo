@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
     "history": "tsx src/history.ts",
-    "check:citations": "tsx src/check-citations.ts"
+    "check:citations": "tsx src/check-citations.ts",
+    "qa": "tsx src/qa.ts"
   },
   "dependencies": {
     "@archaeo/agent": "workspace:*",
