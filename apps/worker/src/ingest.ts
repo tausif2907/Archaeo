@@ -75,8 +75,9 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
     const commits = await readGitLog(dir, config.maxCommits);
     await writeCommits(deps, repoId, commits);
     await writeChurn(prisma, repoId, commits);
-    const warning = await syncGitHub(deps, repoId, repo.owner, repo.name, repo.githubSyncedAt, commits);
+    const warning = await syncGitHub(deps, repoId, repo.owner, repo.name, repo.githubSyncedAt);
     if (warning) warnings.push(warning);
+    await relinkPullRequests(deps, repoId, commits);
   });
 
   await stage("embed", "Embedding code, commits and PRs", () => embedPending(deps, repoId));
@@ -242,34 +243,30 @@ async function syncGitHub(
   owner: string,
   name: string,
   since: Date | null,
-  commits: CommitInfo[],
 ): Promise<string | null> {
   const startedAt = new Date();
   const octokit = createOctokit(config.githubToken);
   try {
-    const prs = await fetchMergedPullRequests(octokit, owner, name, { since, max: config.maxPullRequests });
+    // One-time backfill: PRs stored before mergeCommitSha existed need a full refetch.
+    const missingMergeSha = await prisma.pullRequest.count({ where: { repoId, mergedAt: { not: null }, mergeCommitSha: null } });
+    const prSince = missingMergeSha > 0 ? null : since;
+    const prs = await fetchMergedPullRequests(octokit, owner, name, { since: prSince, max: config.maxPullRequests });
     const issues = await fetchIssues(octokit, owner, name, { since, max: config.maxIssues });
     log(`  GitHub: ${prs.length} merged PRs and ${issues.length} issues updated${since ? ` since ${since.toISOString()}` : ""}`);
 
-    const links = linkPullRequests(prs, commits);
     const existingPrs = new Map(
-      (await prisma.pullRequest.findMany({ where: { repoId }, select: { id: true, number: true } })).map((p) => [p.number, p.id]),
+      (await prisma.pullRequest.findMany({ where: { repoId }, select: { id: true, number: true, title: true, body: true } })).map((p) => [p.number, p]),
     );
     for (const pr of prs) {
-      const data = { title: pr.title, body: pr.body, mergedAt: pr.mergedAt, linkedCommitShas: links.get(pr.number) ?? [] };
-      const existingId = existingPrs.get(pr.number);
-      const row = existingId
-        ? await prisma.pullRequest.update({ where: { id: existingId }, data })
+      const data = { title: pr.title, body: pr.body, mergedAt: pr.mergedAt, mergeCommitSha: pr.mergeCommitSha };
+      const existing = existingPrs.get(pr.number);
+      const row = existing
+        ? await prisma.pullRequest.update({ where: { id: existing.id }, data })
         : await prisma.pullRequest.create({ data: { repoId, number: pr.number, ...data } });
+      // Only re-chunk (and so re-embed) when the text changed.
+      if (existing && existing.title === pr.title && existing.body === pr.body) continue;
       await prisma.chunk.deleteMany({ where: { repoId, sourceType: "pr", sourceId: row.id } });
       await prisma.chunk.create({ data: { repoId, sourceType: "pr", sourceId: row.id, text: prChunkText(pr) } });
-    }
-
-    // Older PRs referenced by commits we only just saw (not refetched this run)
-    const fetched = new Set(prs.map((p) => p.number));
-    for (const [number, shas] of links) {
-      if (fetched.has(number) || !existingPrs.has(number)) continue;
-      await prisma.pullRequest.update({ where: { id: existingPrs.get(number)! }, data: { linkedCommitShas: shas } });
     }
 
     for (const issue of issues) {
@@ -288,6 +285,20 @@ async function syncGitHub(
     log(`  GitHub sync failed: ${message}`);
     return `GitHub PRs and issues were not fully fetched: ${message}.${hint}`;
   }
+}
+
+/** Recomputes PR → commit links for every stored PR (cheap, in memory) and writes only the ones that changed. */
+async function relinkPullRequests({ prisma, log }: IngestDeps, repoId: string, commits: CommitInfo[]): Promise<void> {
+  const prs = await prisma.pullRequest.findMany({ where: { repoId }, select: { id: true, number: true, mergeCommitSha: true, linkedCommitShas: true } });
+  const links = linkPullRequests(prs, commits);
+  let changed = 0;
+  for (const pr of prs) {
+    const next = links.get(pr.number) ?? [];
+    if (next.length === pr.linkedCommitShas.length && next.every((s) => pr.linkedCommitShas.includes(s))) continue;
+    await prisma.pullRequest.update({ where: { id: pr.id }, data: { linkedCommitShas: next } });
+    changed++;
+  }
+  log(`  linked ${links.size} PRs to commits (${changed} updated)`);
 }
 
 // ---------------------------------------------------------------- embed + summarize

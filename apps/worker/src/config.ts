@@ -1,5 +1,4 @@
-import { isAbsolute, join } from "node:path";
-import { findRepoRoot } from "@archaeo/shared/env";
+import { resolveWorkspaceDir } from "@archaeo/shared/env";
 
 function num(name: string, fallback: number): number {
   const v = Number(process.env[name]);
@@ -20,9 +19,8 @@ export interface IngestConfig {
 }
 
 export function loadIngestConfig(): IngestConfig {
-  const ws = process.env.WORKSPACE_DIR || ".workspace";
   return {
-    workspaceDir: isAbsolute(ws) ? ws : join(findRepoRoot(), ws),
+    workspaceDir: resolveWorkspaceDir(),
     maxLoc: num("INGEST_MAX_LOC", 200_000),
     maxCommits: num("INGEST_MAX_COMMITS", 20_000),
     maxPullRequests: num("INGEST_MAX_PRS", 3_000),

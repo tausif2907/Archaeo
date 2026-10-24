@@ -1,12 +1,13 @@
 import "@archaeo/shared/load-env";
 import { requireEnv } from "@archaeo/shared/env";
-import { FlowProducer, UnrecoverableError, Worker, type Job } from "bullmq";
+import { FlowProducer, Queue, UnrecoverableError, Worker, type Job } from "bullmq";
 import { Redis } from "ioredis";
 import { PrismaCallRecorder, prisma } from "@archaeo/db";
 import { RepoTooLargeError } from "@archaeo/ingest";
 import { configureModels } from "@archaeo/models";
-import { QUEUES, type IngestJobData, type SummarizeJobData } from "@archaeo/shared";
+import { QUEUES, type ErasJobData, type IngestJobData, type SummarizeJobData } from "@archaeo/shared";
 import { loadIngestConfig } from "./config";
+import { runEras } from "./eras";
 import { runIngest } from "./ingest";
 import { finalizeIngest, summarizeBatch } from "./summarize";
 
@@ -14,6 +15,7 @@ const models = configureModels({ recorder: new PrismaCallRecorder() });
 const config = loadIngestConfig();
 const connection = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
 const flows = new FlowProducer({ connection });
+const erasQueue = new Queue<ErasJobData>(QUEUES.eras, { connection });
 const log = (msg: string) => console.log(`[worker] ${msg}`);
 
 async function handleIngest(job: Job<IngestJobData>): Promise<void> {
@@ -21,6 +23,8 @@ async function handleIngest(job: Job<IngestJobData>): Promise<void> {
   if (job.name === "finalize") {
     await finalizeIngest(repoId, prisma);
     log(`repo ${repoId} ready`);
+    await prisma.repo.update({ where: { id: repoId }, data: { erasStatus: "pending", erasMessage: null } });
+    await erasQueue.add("eras", { repoId }, { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 });
     return;
   }
 
@@ -57,14 +61,29 @@ const summarizeWorker = new Worker<SummarizeJobData>(QUEUES.summarize, (job) => 
   concurrency: 4,
 });
 
-ingestWorker.on("ready", () => log(`listening on queues "${QUEUES.ingest}" and "${QUEUES.summarize}"`));
-for (const w of [ingestWorker, summarizeWorker]) {
+async function handleEras(job: Job<ErasJobData>): Promise<void> {
+  try {
+    await runEras(job.data.repoId, { prisma, models, config, log }, job.data.force);
+  } catch (err) {
+    const final = job.attemptsMade + 1 >= (job.opts.attempts ?? 1);
+    if (final) {
+      const message = err instanceof Error ? err.message : String(err);
+      await prisma.repo.update({ where: { id: job.data.repoId }, data: { erasStatus: "failed", erasMessage: message } });
+    }
+    throw err;
+  }
+}
+
+const erasWorker = new Worker<ErasJobData>(QUEUES.eras, handleEras, { connection, concurrency: 1, lockDuration: 300_000 });
+
+ingestWorker.on("ready", () => log(`listening on queues "${QUEUES.ingest}", "${QUEUES.summarize}" and "${QUEUES.eras}"`));
+for (const w of [ingestWorker, summarizeWorker, erasWorker]) {
   w.on("failed", (job, err) => console.error(`[worker] ${w.name} job ${job?.id} failed:`, err.message));
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
-    await Promise.all([ingestWorker.close(), summarizeWorker.close(), flows.close()]);
+    await Promise.all([ingestWorker.close(), summarizeWorker.close(), erasWorker.close(), flows.close(), erasQueue.close()]);
     connection.disconnect();
     await prisma.$disconnect();
     process.exit(0);

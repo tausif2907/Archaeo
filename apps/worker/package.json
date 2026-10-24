@@ -10,6 +10,7 @@
     "test": "vitest run --passWithNoTests"
   },
   "dependencies": {
+    "@archaeo/agent": "workspace:*",
     "@archaeo/db": "workspace:*",
     "@archaeo/ingest": "workspace:*",
     "@archaeo/models": "workspace:*",
