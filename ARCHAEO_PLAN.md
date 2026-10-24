@@ -143,11 +143,11 @@ Each call records model, tokens in/out, latency, and estimated cost to a `ModelC
 
 ## 7. Phase 2 — The Past (Days 3–4)
 
-- [ ] **Era detection:** group commits by time windows and the top-level folders they touch; merge adjacent similar windows; target 5–12 eras per repo
-- [ ] For each era, `reason()` writes a narrative: what changed, why (from PR bodies), and key contributors. **Every claim cites commit SHAs or PR numbers**
-- [ ] Timeline UI: horizontal eras; clicking one shows the narrative plus linked commits and PRs (deep links to GitHub)
-- [ ] **"Why does this exist?"** For a file or symbol, walk blame and history to its introducing and major-change commits, then explain with citations
-- [ ] Store narratives in `Era`; regenerate on demand
+- [x] **Era detection:** group commits by time windows and the top-level folders they touch; merge adjacent similar windows; target 5–12 eras per repo
+- [x] For each era, `reason()` writes a narrative: what changed, why (from PR bodies), and key contributors. **Every claim cites commit SHAs or PR numbers**
+- [x] Timeline UI: horizontal eras; clicking one shows the narrative plus linked commits and PRs (deep links to GitHub)
+- [x] **"Why does this exist?"** For a file or symbol, walk blame and history to its introducing and major-change commits, then explain with citations
+- [x] Store narratives in `Era`; regenerate on demand
 
 **Acceptance**
 - 5 hand-written history questions about the demo repo are answered correctly, with valid citations
@@ -294,3 +294,10 @@ _Record decisions here as they are made (date, decision, reason)._
 - **2026-10-24 — Progress uses polling** (`GET /repos/:id/progress`), with per-stage counts computed from the DB rather than stored counters. SSE is reserved for agent runs (Phase 3).
 - **2026-10-24 — Chunks store `path`/`startLine`/`endLine`** so Phase 3 answers can cite `path:line` directly. Classes are chunked as their header only, so method bodies aren't embedded twice. No vector index yet: an exact scan over ~10k vectors per repo is fast enough. Add HNSW in Phase 3 if needed.
 - **2026-10-24 — Phase 1 acceptance on pallets/click:** 91 files, 2,078 symbols, 3,379 commits, 1,086 merged PRs and 1,819 issues, all matching `git` and GitHub search. First ingest took ~2 min (mostly unauthenticated GitHub paging). Re-ingest took ~4 s with 0 new rows.
+- **2026-10-24 — PR ↔ commit links include whole PR branches.** For every `Merge pull request #N` commit, the PR owns the commits reachable from its second parent and not from its first. These are found with git's date-ordered "paint" walk, in memory, from `%P` parents. This also covers PRs merged into maintenance branches. On click, commits linked to a PR went from 1,082 to the full branch history. `PullRequest.mergeCommitSha` is stored, and links are recomputed for every PR on each ingest.
+- **2026-10-24 — Eras:** commits are bucketed into windows between major/minor release tags (calendar quarters when a repo has fewer than 6 releases). Adjacent windows are merged cheapest-first until the target count, `clamp(round(years × 0.75), 5, 12)`, is reached. Merge cost = area dissimilarity × √(smaller window) + penalties for eras much longer or larger than an even split. Areas are top-level folders with `src/` stripped (so the `click/` → `src/click/` move doesn't look like a new area). Any folder above 25% of activity is split into its modules. Bot commits count toward totals but carry no weight for areas or authorship. click comes out as 9 eras that follow its maintainer history.
+- **2026-10-24 — Citations** use the syntax `[abc1234]` and `[#123]`. `validateCitations` removes any SHA (unique prefix, at least 7 characters) or PR/issue number that doesn't exist, bracketed or bare. `pnpm check:citations` re-checks every stored narrative.
+- **2026-10-24 — Narratives fall back to evidence.** If `reason()` output isn't valid JSON or has no valid citation, the era narrative or why-answer is assembled from the evidence pack itself: stats, key PRs and commits, introducing commit, PR excerpt, blame. The mock provider always takes this path, so offline output is extractive but fully cited. Real narrative quality is unmeasured until the Meta API is live.
+- **2026-10-24 — Narratives are reused while an era's evidence fingerprint is unchanged.** "Regenerate" forces a rewrite. Eras run on their own `eras` queue, queued automatically after ingest finalizes.
+- **2026-10-24 — "Why does this exist?" runs synchronously in the API.** It uses `git log --follow` for files and `git log -L` for symbols or line ranges, plus `git blame -w -M`, and caches answers per repo HEAD. The API therefore needs the same `WORKSPACE_DIR` as the worker.
+- **2026-10-24 — Phase 2 acceptance:** `pnpm eval:history` scores 5/5 on hand-checked click questions (introducing commit, linked PR, cited, no invalid citations). `pnpm check:citations` finds 0 invalid citations across 9 eras (17 commit and 40 PR citations).
