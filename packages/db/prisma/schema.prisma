@@ -209,11 +209,13 @@ model Era {
 }
 
 model Module {
-  id         String  @id @default(cuid())
-  repoId     String
-  path       String
-  summary    String?
-  parentPath String?
+  id          String  @id @default(cuid())
+  repoId      String
+  path        String
+  summary     String?
+  parentPath  String?
+  /// Hash of the child summaries this summary was written from
+  fingerprint String?
 
   repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
 
@@ -247,6 +249,8 @@ model AgentRun {
   input        Json
   status       AgentRunStatus @default(running)
   toolCalls    Json?
+  /// Final answer and citations
+  output       Json?
   costEstimate Float          @default(0)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
