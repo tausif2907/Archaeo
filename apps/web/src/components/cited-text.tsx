@@ -1,18 +1,54 @@
+"use client";
+
 import type { ReactNode } from "react";
+import type { CodeRef } from "@archaeo/shared";
+import { useCodeViewer } from "./code-viewer";
 
-const CITATION_GROUP = /\[((?:#\d+|[0-9a-f]{7,40})(?:\s*,\s*(?:#\d+|[0-9a-f]{7,40}))*)\]/g;
+const TOKEN = String.raw`(?:#\d+|[0-9a-f]{7,40}|[\w./-]+\.[A-Za-z0-9]+:\d+(?:-\d+)?)`;
+const CITATION_GROUP = new RegExp(String.raw`\[(${TOKEN}(?:\s*,\s*${TOKEN})*)\]`, "g");
 const INLINE = /(`[^`]+`|\*\*[^*]+\*\*)/g;
+const CODE_REF = /^([\w./-]+\.[A-Za-z0-9]+):(\d+)(?:-(\d+))?$/;
 
-function CitationLink({ token, repoUrl }: { token: string; repoUrl: string }) {
+function parseRef(token: string): CodeRef | null {
+  const m = CODE_REF.exec(token);
+  return m ? { path: m[1]!, startLine: Number(m[2]), endLine: Number(m[3] ?? m[2]) } : null;
+}
+
+const PILL = "rounded px-1 py-px font-mono text-[0.8em] no-underline";
+
+function Citation({ token, repoUrl }: { token: string; repoUrl: string }) {
+  const viewer = useCodeViewer();
+  const ref = parseRef(token);
+  if (ref) {
+    const label = token.length > 48 ? `…${token.slice(-46)}` : token;
+    return viewer ? (
+      <button
+        type="button"
+        onClick={() => viewer.open(ref)}
+        title={`Open ${token}`}
+        className={`${PILL} bg-sky-100 text-sky-900 hover:bg-sky-200 dark:bg-sky-900/40 dark:text-sky-200 dark:hover:bg-sky-900/70`}
+      >
+        {label}
+      </button>
+    ) : (
+      <a
+        href={`${repoUrl}/blob/HEAD/${ref.path}#L${ref.startLine}-L${ref.endLine}`}
+        target="_blank"
+        rel="noreferrer"
+        className={`${PILL} bg-sky-100 text-sky-900 dark:bg-sky-900/40 dark:text-sky-200`}
+      >
+        {label}
+      </a>
+    );
+  }
   const isPr = token.startsWith("#");
-  const href = isPr ? `${repoUrl}/pull/${token.slice(1)}` : `${repoUrl}/commit/${token}`;
   return (
     <a
-      href={href}
+      href={isPr ? `${repoUrl}/pull/${token.slice(1)}` : `${repoUrl}/commit/${token}`}
       target="_blank"
       rel="noreferrer"
       title={isPr ? `Pull request ${token}` : `Commit ${token}`}
-      className="rounded bg-amber-100 px-1 py-px font-mono text-[0.8em] text-amber-900 no-underline hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/70"
+      className={`${PILL} bg-amber-100 text-amber-900 hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/70`}
     >
       {isPr ? token : token.slice(0, 7)}
     </a>
@@ -33,17 +69,16 @@ function inline(text: string, key: string): ReactNode[] {
   });
 }
 
-/** One line of text with citations turned into commit/PR links. */
+/** One line of text with commit, PR and code citations turned into links. */
 export function CitedLine({ text, repoUrl }: { text: string; repoUrl: string }) {
   const nodes: ReactNode[] = [];
   let last = 0;
   for (const m of text.matchAll(CITATION_GROUP)) {
     nodes.push(...inline(text.slice(last, m.index), `t${last}`));
-    const tokens = m[1]!.split(/\s*,\s*/);
     nodes.push(
       <span key={`c${m.index}`} className="inline-flex flex-wrap gap-0.5 align-baseline">
-        {tokens.map((t) => (
-          <CitationLink key={t} token={t} repoUrl={repoUrl} />
+        {m[1]!.split(/\s*,\s*/).map((t) => (
+          <Citation key={t} token={t} repoUrl={repoUrl} />
         ))}
       </span>,
     );

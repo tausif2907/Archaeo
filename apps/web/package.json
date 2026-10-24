@@ -8,10 +8,12 @@
     "build": "next build",
     "start": "next start -p 3000",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@archaeo/shared": "workspace:*",
+    "@xyflow/react": "^12.12.0",
     "next": "^15.1.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
