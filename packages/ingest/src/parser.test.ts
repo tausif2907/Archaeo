@@ -131,6 +131,42 @@ describe("import resolution and call graph", () => {
     expect(r.resolve("src/server.ts", { module: "express", level: 0, names: [] })).toEqual([]);
   });
 
+  it("never resolves calls to closures in other files or from app code into tests", () => {
+    const sym = (qualifiedName: string, kind: "function" | "method" | "class", startLine: number, calls: string[] = []) => ({
+      kind,
+      name: qualifiedName.split(".").pop()!,
+      qualifiedName,
+      startLine,
+      endLine: startLine + 1,
+      calls,
+    });
+    const files: ParsedFile[] = [
+      { path: "src/app/utils.py", language: "python", complexity: 0, imports: [], symbols: [sym("detect", "function", 1, ["exists", "helper"])] },
+      { path: "tests/test_paths.py", language: "python", complexity: 0, imports: [], symbols: [sym("test_path", "function", 1, ["detect"]), sym("test_path.exists", "function", 2)] },
+      { path: "src/app/core.py", language: "python", complexity: 0, imports: [], symbols: [sym("run", "function", 1, ["helper"]), sym("run.helper", "function", 2), sym("Cmd", "class", 5), sym("Cmd.helper", "method", 6)] },
+    ];
+    const calls = buildCallEdges(files, []).map((e) => `${e.from} -> ${e.to}`);
+    // `exists` (really os.path.exists) must not bind to a closure inside a test. From other files, `helper`
+    // resolves only to the class method, never to the closure `run.helper`. Inside core.py, `run` → `helper`
+    // is ambiguous (closure or method), so no edge is guessed.
+    expect(calls).toEqual(["src/app/utils.py#detect@1 -> src/app/core.py#Cmd.helper@6", "tests/test_paths.py#test_path@1 -> src/app/utils.py#detect@1"]);
+  });
+
+  it("resolves an ambiguous self-call to the caller's own class", () => {
+    const sym = (qualifiedName: string, startLine: number, calls: string[] = []) => ({
+      kind: "method" as const,
+      name: qualifiedName.split(".").pop()!,
+      qualifiedName,
+      startLine,
+      endLine: startLine + 1,
+      calls,
+    });
+    const files: ParsedFile[] = [
+      { path: "core.py", language: "python", complexity: 0, imports: [], symbols: [sym("Command.main", 1, ["invoke"]), sym("Command.invoke", 3), sym("Context.invoke", 5)] },
+    ];
+    expect(buildCallEdges(files, [])).toEqual([{ from: "core.py#Command.main@1", to: "core.py#Command.invoke@3" }]);
+  });
+
   it("builds import and call edges across files", () => {
     const files = [parseFixture("ts", "src/server.ts"), parseFixture("ts", "src/lib/format.ts"), parseFixture("ts", "src/db.js")];
     const resolver = new ImportResolver(files.map((f) => f.path));

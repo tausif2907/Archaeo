@@ -160,8 +160,13 @@ describe("scanning and chunking", () => {
         ],
       },
     );
+    expect(chunks.map((c) => [c.startLine, c.endLine])).toEqual([
+      [1, 2],
+      [3, 4],
+      [6, 7],
+    ]);
     expect(chunks.map((c) => c.text)).toEqual([
-      "a.py:1-4 class A\nclass A:\n    x = 1",
+      "a.py:1-2 class A\nclass A:\n    x = 1",
       "a.py:3-4 method A.m\n    def m(self):\n        return 1",
       "a.py:6-7 function f\ndef f():\n    return 2",
     ]);

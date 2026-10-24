@@ -39,12 +39,13 @@ export function codeChunks(file: SourceFile, parsed: ParsedFile): CodeChunkDraft
       const firstChild = parsed.symbols.find((s) => s !== sym && s.startLine > sym.startLine && s.endLine <= sym.endLine);
       end = Math.min(end, firstChild ? firstChild.startLine - 1 : end, sym.startLine + CLASS_HEADER_LINES);
     }
-    const header = `${file.path}:${sym.startLine}-${sym.endLine} ${sym.kind} ${sym.qualifiedName}`;
+    // The chunk's range is the lines it actually contains, so citations built from it stay precise.
+    const header = `${file.path}:${sym.startLine}-${end} ${sym.kind} ${sym.qualifiedName}`;
     return {
       sourceKey: symbolKey(file.path, sym),
       path: file.path,
       startLine: sym.startLine,
-      endLine: sym.endLine,
+      endLine: end,
       text: clip(`${header}\n${slice(sym.startLine, end)}`),
     };
   });
