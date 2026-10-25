@@ -4,9 +4,53 @@ Point Archaeo at any GitHub repo to **understand its past, see its present, and 
 
 Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).
 
+## The problem
+
+Joining an unfamiliar codebase is slow. The reasons behind the code are buried in thousands of commits and pull requests nobody reads, the architecture lives in people's heads, and a bug report arrives as a symptom with no pointer to the code. Archaeo reads the whole repository, history included, and answers with citations you can check: every claim links to a commit, a pull request or a `path:line` range.
+
 ## What it does
 
-Paste a GitHub URL and Archaeo clones it, parses it with tree-sitter (Python, TypeScript, JavaScript), builds import and call graphs, reads the full commit history plus merged PRs and issues, embeds everything into pgvector, and summarizes files, folders and the repo. **The Present:** an interactive architecture map (size = LOC, color = churn, hotspots, expandable folders); a Q&A agent with six code tools, hard limits on tool calls, time and cost, streamed over SSE, whose answers cite `path:line` ranges that open in a code viewer; and a request-flow walkthrough that traces a call path and highlights it on the map. **The Past:** release- and topic-aware eras with cited narratives, and "Why does this exist?" for any file or symbol. Every commit, PR and code citation is validated. **The Future:** paste an error, stack trace or issue URL to get a case file (ranked suspects, evidence and a root-cause hypothesis). Archaeo then generates patches and tests each one against the full suite in an offline Docker sandbox, up to 3 attempts. A patch is offered only if it introduces no new test failures, and its regression tests are checked to fail without the fix. Nothing is pushed until you approve; approval opens a PR inside your fork.
+- **The Past.** A timeline of the project's eras, each with a narrative that cites its key commits and pull requests. "Why does this exist?" for any file or symbol finds the commit and pull request that introduced it and explains how it evolved.
+- **The Present.** An interactive architecture map (size is lines of code, color is churn, hotspots stand out, folders expand). A Q&A agent with six code tools and hard limits on tool calls, time and cost streams answers whose `path:line` citations open in a code viewer. A request-flow walkthrough follows the call graph from an entry point and highlights each hop on the map.
+- **The Future.** Paste an error, a stack trace or a GitHub issue URL to get a case file: ranked suspects, evidence and a root-cause hypothesis. Archaeo then writes patches and runs each one against the full test suite in an offline Docker sandbox, up to 3 attempts. A patch is offered only if it introduces no new test failures, and its regression tests are checked to fail without the fix. Nothing is pushed until you approve, and approval opens a pull request inside your fork.
+
+Every commit, pull request and code citation is checked against the repository before it is shown.
+
+## How it works
+
+```mermaid
+flowchart LR
+  browser[Browser] --> web[Next.js web]
+  web -- REST and SSE --> api[Fastify API]
+  api --> pg[(Postgres + pgvector)]
+  api -- jobs --> redis[(Redis / BullMQ)]
+  redis --> worker[Workers: ingest, summaries, eras, fixes]
+  worker --> pg
+  worker --> github[GitHub API: PRs and issues]
+  worker --> clones[Local git clones]
+  worker --> sandbox[Docker sandbox: tests run offline]
+  api --> models[packages/models]
+  worker --> models
+  models --> meta[Meta Model API: Muse Spark, Muse Code]
+  models --> openweights[Open-weights models on Fireworks or Baseten]
+```
+
+1. **Ingest.** Clone the repo, parse it with tree-sitter (Python, TypeScript, JavaScript), build import and call graphs, read the commit history plus merged pull requests and issues, embed code and history into pgvector, and summarize files, folders and the repo.
+2. **Answer.** Agents work with six tools over that index (code search, file reading, callers, callees, git blame, directory listing) under per-run limits. Answers must cite what they used, and citations that don't resolve are dropped.
+3. **Fix.** The bug tracer ranks suspects from stack frames, the call graph and code search. The fixer checks the repo out at the traced commit in a fresh worktree and runs the test suite in a container with no network, capped memory, CPU and processes.
+
+## Models
+
+All model calls go through `packages/models`, which routes each job to a model set in `.env`.
+
+| Job | Function | Model | Setting |
+|---|---|---|---|
+| File and commit summaries | `summarizeCheap` | Meta open-weights model on Fireworks or Baseten | `MODEL_SUMMARIZE` |
+| Era stories, Q&A, bug reasoning | `reason` | Muse Spark | `MODEL_REASON` |
+| Patches and tests | `writeCode` | Muse Code | `MODEL_WRITE_CODE` |
+| Retrieval | `embed` | Open-weights embedding model | `MODEL_EMBED` |
+
+With `MODEL_PROVIDER=mock` (the default), everything runs offline with canned model outputs. Set `MODEL_PROVIDER=live` and the API keys to use the real models.
 
 ## Quick start
 
@@ -23,7 +67,33 @@ pnpm dev
 - Web: http://localhost:3000
 - API: http://localhost:4000 (`GET /health`, `POST /repos`, `GET /repos/:id`, `GET /repos/:id/progress`, `POST /repos/:id/ingest`, `GET|POST /repos/:id/eras`, `POST /repos/:id/why`, `GET /repos/:id/files`, `GET /repos/:id/symbols`, `GET /repos/:id/map`, `GET /repos/:id/file`, `GET /repos/:id/symbols/search`, `POST /repos/:id/flow`, `POST /repos/:id/ask` and `POST /repos/:id/trace` as SSE, `GET /repos/:id/cases`, `GET /repos/:id/runs/:runId`, `POST /repos/:id/runs/:runId/fix`, `POST /repos/:id/fix-attempts/:attemptId/approve`, `GET /config`)
 
-With `MODEL_PROVIDER=mock` (the default), everything runs offline with canned model outputs. Set `GITHUB_TOKEN` in `.env`: without it, GitHub allows 60 API requests per hour, which is about one first-time ingest of a mid-sized repo.
+Set `GITHUB_TOKEN` in `.env`: without it, GitHub allows 60 API requests per hour, which is about one first-time ingest of a mid-sized repo.
+
+## Deploy
+
+`docker-compose.prod.yml` runs everything on one Linux server with Docker: Postgres, Redis, the API, the workers, the web app, and Caddy in front (automatic HTTPS for a domain, with the API under `/api` on the same origin).
+
+```bash
+git clone https://github.com/tausif2907/archaeo.git
+cd archaeo
+cp .env.production.example .env.production
+```
+
+Fill in `.env.production`: the domain (`SITE_ADDRESS`, `WEB_ORIGIN`), a Postgres password, the model keys and a GitHub token. Then start the stack and get the demo repos ready:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production up -d --build
+```
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.production exec worker pnpm demo:prepare
+```
+
+`pnpm demo:prepare` ingests the repos listed in `demo/demo.json`, waits for their timelines, then runs each demo question once so it is answered from the cache during the demo. Results stay cached across restarts.
+
+`PUBLIC_DEMO=true` makes the link safe to share: visitors explore the pre-ingested repos, while adding or re-ingesting repos, regenerating timelines and publishing pull requests are turned off. Fix runs still work and stay in the sandbox.
+
+The worker runs fix sandboxes through the server's Docker, so it has access to the Docker socket. Use a server dedicated to Archaeo.
 
 ## Scripts
 
@@ -34,23 +104,26 @@ With `MODEL_PROVIDER=mock` (the default), everything runs offline with canned mo
 | `pnpm lint` | ESLint over the workspace |
 | `pnpm test` | Vitest in every package |
 | `pnpm db:migrate` | Creates and applies a Prisma migration (dev) |
-| `pnpm eval:history` | Scores "why" answers against `packages/evals/datasets/history.json` (needs the repo ingested) |
-| `pnpm eval:qa` | Scores code Q&A answers against `packages/evals/datasets/qa.json` (needs the repo ingested) |
+| `pnpm eval` | Runs the history, Q&A and bug evals for every repo in `packages/evals/datasets/` and writes `evals/REPORT.md` (`-- --repo click`, `-- --suite qa`, `-- --no-fix` narrow a run; the repos must be ingested) |
+| `pnpm eval:history`, `pnpm eval:qa` | One suite, printed to the console (`-- --repo got` for another repo) |
+| `pnpm eval:bugs` | Traces and fixes the historical bugs in the sandbox; `-- --replay` replays the real fix to check the pipeline and approval gate |
+| `pnpm demo:prepare` | Ingests the repos in `demo/demo.json` and warms the demo answers |
 | `pnpm e2e` | Playwright end-to-end tests: map speed and expand/collapse, Q&A citations, flow trace (needs the stack running; first run `pnpm exec playwright install chromium`) |
-| `pnpm eval:bugs` | Traces and fixes the historical bugs in `packages/evals/datasets/bugs.json` in the sandbox; `-- --replay` replays the real fix to check the pipeline and approval gate |
 | `pnpm check:citations` | Fails if any stored era narrative cites a commit or PR that doesn't exist |
 
 ## Layout
 
 ```
-apps/web       Next.js UI
-apps/api       Fastify API
-apps/worker    BullMQ workers
+apps/web          Next.js UI
+apps/api          Fastify API
+apps/worker       BullMQ workers
 packages/db       Prisma schema and client
 packages/models   All model calls: summarizeCheap, reason, writeCode, generateImage, embed
 packages/shared   zod schemas and shared types
 packages/ingest   clone, tree-sitter parsing, import/call graph, git log, GitHub fetchers, chunking
-packages/agent    Agent loop, code tools, run limits, Q&A, flow tracing, and history reasoning (eras, narratives, citations, why)
-packages/evals    Eval datasets and runners
+packages/agent    Agent loop, code tools, run limits, Q&A, flow tracing, history reasoning, bug tracing and the fixer
+packages/evals    Eval datasets (per repo) and the eval runner
 packages/sandbox  Docker sandbox: worktree per run, lock-pinned test deps, offline test runs, diff and pytest helpers
+demo/             Demo repos and warm-up questions for pnpm demo:prepare
+deploy/           Caddy config for docker-compose.prod.yml
 ```
