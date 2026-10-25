@@ -1,0 +1,14 @@
+# SITE_ADDRESS is a domain (automatic HTTPS) or ":80" for plain HTTP, e.g. behind another proxy or for a local test.
+{$SITE_ADDRESS}
+
+# The API lives under /api on the same origin; SSE streams (ask, trace) are flushed immediately.
+handle_path /api/* {
+	reverse_proxy api:4000 {
+		flush_interval -1
+	}
+}
+
+handle {
+	encode zstd gzip
+	reverse_proxy web:3000
+}
