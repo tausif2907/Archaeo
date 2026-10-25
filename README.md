@@ -2,11 +2,11 @@
 
 Point Archaeo at any GitHub repo to **understand its past, see its present, and fix its future**.
 
-Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026). The build plan and progress live in [ARCHAEO_PLAN.md](ARCHAEO_PLAN.md).
+Built for the Meta Global AI Developer Hackathon (Oct 26 – Nov 4, 2026).
 
-## Status
+## What it does
 
-Phases 0–4 are done. Paste a GitHub URL and Archaeo clones it, parses it with tree-sitter (Python, TypeScript, JavaScript), builds import and call graphs, reads the full commit history plus merged PRs and issues, embeds everything into pgvector, and summarizes files, folders and the repo. **The Present:** an interactive architecture map (size = LOC, color = churn, hotspots, expandable folders); a Q&A agent with six code tools, hard limits on tool calls, time and cost, streamed over SSE, whose answers cite `path:line` ranges that open in a code viewer; and a request-flow walkthrough that traces a call path and highlights it on the map. **The Past:** release- and topic-aware eras with cited narratives, and "Why does this exist?" for any file or symbol. Every commit, PR and code citation is validated. **The Future:** paste an error, stack trace or issue URL to get a case file (ranked suspects, evidence and a root-cause hypothesis). Archaeo then generates patches and tests each one against the full suite in an offline Docker sandbox, up to 3 attempts. A patch is offered only if it introduces no new test failures, and its regression tests are checked to fail without the fix. Nothing is pushed until you approve; approval opens a PR inside your fork. Next: evals and hardening (Phase 5).
+Paste a GitHub URL and Archaeo clones it, parses it with tree-sitter (Python, TypeScript, JavaScript), builds import and call graphs, reads the full commit history plus merged PRs and issues, embeds everything into pgvector, and summarizes files, folders and the repo. **The Present:** an interactive architecture map (size = LOC, color = churn, hotspots, expandable folders); a Q&A agent with six code tools, hard limits on tool calls, time and cost, streamed over SSE, whose answers cite `path:line` ranges that open in a code viewer; and a request-flow walkthrough that traces a call path and highlights it on the map. **The Past:** release- and topic-aware eras with cited narratives, and "Why does this exist?" for any file or symbol. Every commit, PR and code citation is validated. **The Future:** paste an error, stack trace or issue URL to get a case file (ranked suspects, evidence and a root-cause hypothesis). Archaeo then generates patches and tests each one against the full suite in an offline Docker sandbox, up to 3 attempts. A patch is offered only if it introduces no new test failures, and its regression tests are checked to fail without the fix. Nothing is pushed until you approve; approval opens a PR inside your fork.
 
 ## Quick start
 
