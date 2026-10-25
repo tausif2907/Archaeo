@@ -177,23 +177,23 @@ Each call records model, tokens in/out, latency, and estimated cost to a `ModelC
 ## 9. Phase 4 — The Future (Days 6–8)
 
 ### Bug tracer
-- [ ] Input: pasted error or stack trace, or a GitHub issue URL
-- [ ] Parse stack frames into files and lines; pull issue text and comments
-- [ ] Candidate ranking: stack frames, then call-graph neighbors, then embedding similarity; keep the top 5 as **suspects**
-- [ ] `reason()` investigates suspects with agent tools and outputs a structured report: root-cause hypothesis, evidence (path:line plus why), confidence, and the files to change
-- [ ] UI: "case file" view with suspects, evidence, and the hypothesis
+- [x] Input: pasted error or stack trace, or a GitHub issue URL
+- [x] Parse stack frames into files and lines; pull issue text and comments
+- [x] Candidate ranking: stack frames, then call-graph neighbors, then embedding similarity; keep the top 5 as **suspects**
+- [x] `reason()` investigates suspects with agent tools and outputs a structured report: root-cause hypothesis, evidence (path:line plus why), confidence, and the files to change
+- [x] UI: "case file" view with suspects, evidence, and the hypothesis
 
 ### Fixer
-- [ ] `packages/sandbox`: create a Modal sandbox, clone the repo at a given SHA, install dependencies (cache the image per repo), and run the test command
-- [ ] `writeCode()` produces a unified diff for the suspected files; apply it in the sandbox
-- [ ] Run the tests. On failure, feed the test output back and retry (max 3 attempts)
-- [ ] Optionally write a regression test for the bug when feasible
-- [ ] Store each `FixAttempt` with the patch, test output, and pass/fail
+- [x] `packages/sandbox`: create a Modal sandbox, clone the repo at a given SHA, install dependencies (cache the image per repo), and run the test command _(Docker provider; the Modal adapter waits on Modal tokens, see Decisions log)_
+- [x] `writeCode()` produces a unified diff for the suspected files; apply it in the sandbox
+- [x] Run the tests. On failure, feed the test output back and retry (max 3 attempts)
+- [x] Optionally write a regression test for the bug when feasible
+- [x] Store each `FixAttempt` with the patch, test output, and pass/fail
 
 ### PR
-- [ ] Show the diff plus test results; the user must click **Approve** before anything is pushed
-- [ ] On approval: create a branch on a **fork** owned by the configured account, push, and open a PR with the explanation, evidence, and test results
-- [ ] PR body and commits contain **no AI co-author or attribution lines**
+- [x] Show the diff plus test results; the user must click **Approve** before anything is pushed
+- [ ] On approval: create a branch on a **fork** owned by the configured account, push, and open a PR with the explanation, evidence, and test results _(implemented in `GitHubForkPublisher`; not yet run against GitHub: needs a `GITHUB_TOKEN` that can fork and open PRs)_
+- [x] PR body and commits contain **no AI co-author or attribution lines**
 
 **Acceptance**
 - One real or historical bug in the demo repo goes end to end: issue, suspects, passing patch, PR on a fork
@@ -313,3 +313,15 @@ _Record decisions here as they are made (date, decision, reason)._
 - **2026-10-24 — The request-flow walkthrough is a static call-graph trace.** Hops are chosen breadth-first (so make_context and invoke both appear) and shown depth-first as a call tree. Callees are ranked caller's own class, then same file, then body size and fan-out, and shown in call order with the calling line. Duplicate definitions (typing `@overload` stubs) resolve to the largest body. Explanations come from one `reason()` call, with docstrings as the fallback.
 - **2026-10-24 — Playwright end-to-end tests** (`pnpm e2e`, needs the stack running with the demo repo ingested): the map draws nodes and edges in under 3 s (measured from navigation start) and folders expand and collapse; Q&A citations open the code viewer; the flow trace highlights hops on the map.
 - **2026-10-24 — Phase 3 acceptance on click:** `pnpm eval:qa` passes 10/10 (a citation of at most 300 lines overlapping an expected symbol, and every citation valid). File recall is 10/10, and the first citation is in an expected file 6/10. Offline, the mock model only lists retrieved code, so this measures retrieval and citation checking, not answer quality. The map draws in ~0.95 s in dev mode. All three limit tests pass.
+- **2026-10-25 — The sandbox runs on local Docker, not Modal.** There are no Modal tokens, so `packages/sandbox` defines a provider interface with a Docker implementation. Each run gets a fresh `git worktree` at the target commit, mounted into a container with `--network none`, 2 GB memory, 2 CPUs and a 512-process limit. Images are cached per repo by a hash of the dependency manifests. `SANDBOX_PROVIDER=modal` fails with a clear message until the adapter exists.
+- **2026-10-25 — Sandbox images pin test dependencies from the repo's lock file** (`uv export --frozen --group tests`), falling back to `requirements/*test*.txt`, then plain `pytest`. An unpinned pytest 9.1 broke collection of click's 2026-06 commit, because its filterwarnings turned a deprecation into an error. Images include `git` and `less` (click's pager tests need `less`) and the project's build backend. Each run first does an offline editable install, `pip install --no-deps --no-build-isolation --no-index -e .`, because click's HEAD tests read the package metadata.
+- **2026-10-25 — Patches are judged against a baseline run** at the base commit. A clean baseline must stay fully green. With a failing baseline, a patch passes only if pytest's failing test ids show no new failures. A failing baseline whose failures can't be parsed means nothing is offered. A patch must change non-test code. When a patch adds tests, those tests alone are also run against the unfixed code to check they fail (`reproduced`), which proves they target the bug. Without that check, an empty patch would "pass" at a commit where no test covers the bug.
+- **2026-10-25 — Publishing happens only through `approveFixAttempt`.** The fix loop's `FixEnvironment` has no way to push. Approval requires the attempt to be the offered, passing, unpublished one, and records `approvedAt` before publishing (cleared again if publishing fails). `GitHubForkPublisher` forks into the token's account and pushes the base commit and the fix branch. With `PR_TARGET=fork` (the default) the PR opens **inside the fork**, against a branch pinned at the base commit, so demos never open PRs on the upstream project. `PR_TARGET=upstream` is opt-in. Commit author is `PR_AUTHOR_NAME`/`PR_AUTHOR_EMAIL`, else the token's GitHub user with their noreply email. PR text never carries AI attribution (tested).
+- **2026-10-25 — Bug tracer:** Python and JS stack traces are parsed innermost-first and mapped onto repo files by the longest path suffix (`site-packages/click/core.py` → `src/click/core.py`). Suspects come from stack frames (decaying weight), call-graph neighbors of the two innermost frames, then code search. Test files are excluded unless the trace runs through them. The agent must return JSON (hypothesis, confidence, evidence refs, files to change). Invalid refs are dropped, and otherwise the report falls back to the ranking. Issues come from GitHub (title, body, first 10 comments), or the ingested copy when offline.
+- **2026-10-25 — Keyword search matches at identifier boundaries with simple stemming.** In a bug report containing `[foo|bar|baz]`, "bar" ranked `progressbar` first under substring matching. Pure whole-word matching then lost "confirmation" → `confirm`. Boundary-plus-stem fixed both, and code Q&A first-citation accuracy went from 6/10 to 7/10.
+- **2026-10-25 — Phase 4 acceptance on click.** Historical bug: `762c97e`, "Optional Choice arguments show doubled brackets", with pre-fix `8929d39`, described by symptom only.
+  - Tracing ranks the real fix location, `Argument.make_metavar`, #2 (top-3 hit).
+  - With the offline mock model, all 3 attempts fail to apply and nothing is offered.
+  - `pnpm eval:bugs --replay` (a scripted model, a pipeline check rather than a model eval) runs a wrong patch first: 27 tests fail and it is refused. The real fix then gives 1,658 passing tests, and its regression tests fail without it. Approving the failing attempt is refused; the publisher has 0 calls before approval and exactly 1 after; the PR text has no attribution; re-approval is refused.
+  - The Playwright test runs the Fix tab end to end in the real sandbox and confirms no Approve button appears for failing patches.
+  - **Not yet done:** a PR on a real fork (needs a token) and a model-written passing patch (needs the live model). Historical-bug tracing currently uses the HEAD index, which already contains the fix; Phase 5 should index the pre-fix commit.
