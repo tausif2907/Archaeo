@@ -5,9 +5,11 @@ import { Redis } from "ioredis";
 import { PrismaCallRecorder, prisma } from "@archaeo/db";
 import { RepoTooLargeError } from "@archaeo/ingest";
 import { configureModels } from "@archaeo/models";
-import { QUEUES, type ErasJobData, type IngestJobData, type SummarizeJobData } from "@archaeo/shared";
+import { createSandboxProvider } from "@archaeo/sandbox";
+import { QUEUES, type ErasJobData, type FixJobData, type IngestJobData, type SummarizeJobData } from "@archaeo/shared";
 import { loadIngestConfig } from "./config";
 import { runEras } from "./eras";
+import { runFix } from "./fix";
 import { runIngest } from "./ingest";
 import { finalizeIngest, summarizeBatch } from "./summarize";
 
@@ -76,14 +78,34 @@ async function handleEras(job: Job<ErasJobData>): Promise<void> {
 
 const erasWorker = new Worker<ErasJobData>(QUEUES.eras, handleEras, { connection, concurrency: 1, lockDuration: 300_000 });
 
-ingestWorker.on("ready", () => log(`listening on queues "${QUEUES.ingest}", "${QUEUES.summarize}" and "${QUEUES.eras}"`));
-for (const w of [ingestWorker, summarizeWorker, erasWorker]) {
+const sandbox = createSandboxProvider();
+const fixMaxAttempts = Number(process.env.FIX_MAX_ATTEMPTS) || 3;
+
+async function handleFix(job: Job<FixJobData>): Promise<void> {
+  try {
+    await runFix(job.data.runId, { prisma, models, config, sandbox, log, maxAttempts: fixMaxAttempts });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const run = await prisma.agentRun.findUnique({ where: { id: job.data.runId } });
+    await prisma.agentRun.update({
+      where: { id: job.data.runId },
+      data: { status: "failed", output: { ...((run?.output as object | null) ?? {}), phase: "Failed", error: message } },
+    });
+    throw err;
+  }
+}
+
+// One fix at a time: each runs a container test suite several times.
+const fixWorker = new Worker<FixJobData>(QUEUES.fix, handleFix, { connection, concurrency: 1, lockDuration: 120_000 });
+
+ingestWorker.on("ready", () => log(`listening on queues "${QUEUES.ingest}", "${QUEUES.summarize}", "${QUEUES.eras}" and "${QUEUES.fix}" (sandbox: ${sandbox.name})`));
+for (const w of [ingestWorker, summarizeWorker, erasWorker, fixWorker]) {
   w.on("failed", (job, err) => console.error(`[worker] ${w.name} job ${job?.id} failed:`, err.message));
 }
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.once(signal, async () => {
-    await Promise.all([ingestWorker.close(), summarizeWorker.close(), erasWorker.close(), flows.close(), erasQueue.close()]);
+    await Promise.all([ingestWorker.close(), summarizeWorker.close(), erasWorker.close(), fixWorker.close(), flows.close(), erasQueue.close()]);
     connection.disconnect();
     await prisma.$disconnect();
     process.exit(0);
