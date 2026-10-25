@@ -1,7 +1,7 @@
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, normalize, posix, sep } from "node:path";
 import type { PrismaClient } from "@archaeo/db";
-import { blame } from "@archaeo/ingest";
+import { blame, isTestPath } from "@archaeo/ingest";
 import type { Models, ToolDefinition } from "@archaeo/models";
 import type { CodeRef } from "@archaeo/shared";
 import { formatCodeRef } from "./code-refs";
@@ -71,6 +71,14 @@ export function keywords(query: string): string[] {
   return [...out].slice(0, 12);
 }
 
+const SUFFIXES = ["ations", "ation", "ings", "ing", "ers", "er", "ed", "es", "s"];
+
+/** Crude English stem for search terms: "confirmation" → "confirm", "validated" → "validat". */
+export function stem(term: string): string {
+  for (const s of SUFFIXES) if (term.endsWith(s) && term.length - s.length >= 4) return term.slice(0, -s.length);
+  return term;
+}
+
 export interface SearchHit extends CodeRef {
   header: string;
   text: string;
@@ -86,7 +94,7 @@ interface ChunkRow {
 }
 
 /** Hybrid retrieval: pgvector similarity + IDF-weighted keyword matches, fused with reciprocal rank. */
-export async function searchCode(ctx: ToolContext, query: string, limit = 8): Promise<SearchHit[]> {
+export async function searchCode(ctx: ToolContext, query: string, limit = 8, opts: { excludeTests?: boolean } = {}): Promise<SearchHit[]> {
   const { prisma, repoId } = ctx;
   const [vector] = await ctx.models.embed([query]);
   const literal = `[${(vector ?? []).join(",")}]`;
@@ -103,20 +111,25 @@ export async function searchCode(ctx: ToolContext, query: string, limit = 8): Pr
       SELECT id, path, "startLine", "endLine", text FROM "Chunk"
       WHERE "repoId" = ${repoId} AND "sourceType" = 'code' AND (text ILIKE ANY(${patterns}) OR path ILIKE ANY(${patterns}))`;
     const total = Math.max(1, await prisma.chunk.count({ where: { repoId, sourceType: "code" } }));
-    const lower = rows.map((r) => ({ row: r, text: r.text.toLowerCase(), header: r.text.split("\n", 1)[0]!.toLowerCase() }));
-    const idf = new Map(terms.map((t) => [t, Math.log(1 + total / (1 + lower.filter((r) => r.text.includes(t) || r.row.path.toLowerCase().includes(t)).length))]));
+    // Matches must start at an identifier boundary ("bar" never matches inside `progressbar`). Short terms
+    // must match whole; longer ones match by stem, so "confirmation" finds `confirm` and "validated" `validate`.
+    const matchers = new Map(terms.map((t) => [t, t.length <= 4 ? new RegExp(`(?<![a-z0-9])${t}(?![a-z0-9])`, "g") : new RegExp(`(?<![a-z0-9])${stem(t)}`, "g")]));
+    const count = (t: string, text: string) => text.match(matchers.get(t)!)?.length ?? 0;
+    const lower = rows.map((r) => ({ row: r, text: r.text.toLowerCase(), header: r.text.split("\n", 1)[0]!.toLowerCase(), path: r.path.toLowerCase() }));
+    const idf = new Map(terms.map((t) => [t, Math.log(1 + total / (1 + lower.filter((r) => count(t, r.text) || count(t, r.path)).length))]));
     byKeyword = lower
-      .map(({ row, text, header }) => {
+      .map(({ row, text, header, path }) => {
         let score = 0;
         for (const t of terms) {
           const w = idf.get(t)!;
-          if (header.includes(t)) score += 3 * w;
-          if (row.path.toLowerCase().includes(t)) score += 1.5 * w;
-          const count = text.split(t).length - 1;
-          if (count) score += w * (1 + Math.log(count));
+          if (count(t, header)) score += 3 * w;
+          if (count(t, path)) score += 1.5 * w;
+          const n = count(t, text);
+          if (n) score += w * (1 + Math.log(n));
         }
         return { row, score };
       })
+      .filter((r) => r.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 40);
   }
@@ -132,6 +145,7 @@ export async function searchCode(ctx: ToolContext, query: string, limit = 8): Pr
   byVector.forEach((row, i) => add(row, i, 1));
   byKeyword.forEach(({ row }, i) => add(row, i, 1.5));
   return [...fused.values()]
+    .filter(({ row }) => !opts.excludeTests || !isTestPath(row.path))
     .map(({ row, score }) => ({ row, score: !wantsTests && /(^|\/)(tests?|examples?|docs)\//.test(row.path) ? score * 0.6 : score }))
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)

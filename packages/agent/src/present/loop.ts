@@ -1,5 +1,8 @@
 import type { ChatMessage, Models } from "@archaeo/models";
 import type { AgentEvent, AgentLimitReason, CodeRef } from "@archaeo/shared";
+
+/** Events the loop itself emits (callers add run/answer/report events). */
+export type LoopEvent = Extract<AgentEvent, { type: "thinking" | "tool_call" | "tool_result" | "limit" }>;
 import type { AgentLimits } from "./limits";
 import type { AgentTool, ToolContext } from "./tools";
 
@@ -29,7 +32,7 @@ export interface LoopOptions {
   ctx: ToolContext;
   messages: ChatMessage[];
   limits: AgentLimits;
-  onEvent?: (e: AgentEvent) => void;
+  onEvent?: (e: LoopEvent) => void;
   runId?: string;
   signal?: AbortSignal;
   /** Injected clock for tests */

@@ -8,7 +8,7 @@ import type { AgentEvent } from "@archaeo/shared";
 import { formatCodeRef, parseCodeRef, validateCodeCitations } from "./code-refs";
 import { docSummary } from "./flow";
 import { limitMessage, runLoop } from "./loop";
-import { keywords, safeRepoPath, type AgentTool, type ToolContext } from "./tools";
+import { keywords, safeRepoPath, stem, type AgentTool, type ToolContext } from "./tools";
 
 const LIMITS = { maxToolCalls: 3, maxDurationMs: 5_000, maxCostUsd: 1 };
 const ctx = { prisma: {} as PrismaClient, models: { embed: async () => [] }, repoId: "r", repoDir: "/tmp/none" } satisfies ToolContext;
@@ -133,6 +133,14 @@ describe("tool helpers", () => {
   it("extracts search keywords without stopwords", () => {
     expect(keywords("Where is the zsh shell completion implemented?")).toEqual(["zsh", "shell", "completion"]);
     expect(keywords("How does Context.invoke handle callbacks")).toEqual(["context", "invoke", "callbacks"]);
+  });
+
+  it("stems longer search terms", () => {
+    expect(stem("confirmation")).toBe("confirm");
+    expect(stem("validated")).toBe("validat");
+    expect(stem("brackets")).toBe("bracket");
+    expect(stem("bar")).toBe("bar");
+    expect(stem("ings")).toBe("ings");
   });
 
   it("keeps paths inside the clone and away from .git", async () => {
