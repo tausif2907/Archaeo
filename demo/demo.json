@@ -1,0 +1,11 @@
+{
+  "notes": "Read by `pnpm demo:prepare`: ingests these repos (waiting for the timeline too), then runs each warm-up request once through the API so the demo answers come from the cache. Inputs must match what you type in the demo exactly, apart from whitespace.",
+  "repos": ["https://github.com/pallets/click"],
+  "warm": [
+    { "repo": "https://github.com/pallets/click", "kind": "ask", "input": { "question": "How does click turn a function into a command-line command?" } },
+    { "repo": "https://github.com/pallets/click", "kind": "ask", "input": { "question": "How does a command parse its arguments and pass them to my function?" } },
+    { "repo": "https://github.com/pallets/click", "kind": "why", "input": { "path": "src/click/shell_completion.py" } },
+    { "repo": "https://github.com/pallets/click", "kind": "why", "input": { "path": "src/click/core.py", "symbol": "Group" } },
+    { "repo": "https://github.com/pallets/click", "kind": "flow", "input": { "symbol": "Command.main" } }
+  ]
+}
