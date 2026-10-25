@@ -30,8 +30,8 @@ export interface CreateModelsOptions {
 function defaultProviders(config: ModelConfig): Record<ProviderName, ModelProvider> {
   return {
     mock: new MockProvider(),
-    meta: new OpenAICompatibleProvider("meta", config.providers.meta),
-    openweights: new OpenAICompatibleProvider(config.providers.openweights.host, config.providers.openweights),
+    meta: new OpenAICompatibleProvider("meta", config.providers.meta, { timeoutMs: config.timeoutMs }),
+    openweights: new OpenAICompatibleProvider(config.providers.openweights.host, config.providers.openweights, { timeoutMs: config.timeoutMs }),
   };
 }
 

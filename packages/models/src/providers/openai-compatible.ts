@@ -19,22 +19,37 @@ export class OpenAICompatibleProvider implements ModelProvider {
   constructor(
     readonly name: string,
     private readonly config: HttpProviderConfig,
+    private readonly http: { timeoutMs?: number; retries?: number; retryDelayMs?: number } = {},
   ) {}
 
+  /** POST with a per-request timeout; 429 and 5xx responses are retried with exponential backoff. */
   private async post<T>(path: string, body: unknown, opts: CallOptions): Promise<T> {
     if (!this.config.baseUrl || !this.config.apiKey) {
       throw new Error(`Model provider "${this.name}" is not configured (missing base URL or API key)`);
     }
-    const res = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}${path}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${this.config.apiKey}` },
-      body: JSON.stringify(body),
-      signal: opts.signal,
-    });
-    if (!res.ok) {
-      throw new Error(`Model provider "${this.name}" ${path} failed: ${res.status} ${await res.text()}`);
+    const timeoutMs = this.http.timeoutMs ?? 60_000;
+    const retries = this.http.retries ?? 2;
+    for (let attempt = 0; ; attempt++) {
+      const timeout = AbortSignal.timeout(timeoutMs);
+      let res: Response;
+      try {
+        res = await fetch(`${this.config.baseUrl.replace(/\/$/, "")}${path}`, {
+          method: "POST",
+          headers: { "content-type": "application/json", authorization: `Bearer ${this.config.apiKey}` },
+          body: JSON.stringify(body),
+          signal: opts.signal ? AbortSignal.any([opts.signal, timeout]) : timeout,
+        });
+      } catch (err) {
+        if (timeout.aborted && !opts.signal?.aborted) throw new Error(`Model provider "${this.name}" timed out after ${Math.round(timeoutMs / 1000)} s (${path})`);
+        throw err;
+      }
+      if (res.ok) return (await res.json()) as T;
+      const retryable = res.status === 429 || res.status >= 500;
+      if (!retryable || attempt >= retries) {
+        throw new Error(`Model provider "${this.name}" ${path} failed: ${res.status} ${(await res.text()).slice(0, 500)}`);
+      }
+      await new Promise((r) => setTimeout(r, (this.http.retryDelayMs ?? 1000) * 2 ** attempt));
     }
-    return (await res.json()) as T;
   }
 
   async chat(model: string, messages: ChatMessage[], tools: ToolDefinition[] | undefined, opts: CallOptions): Promise<ProviderResult<ChatOutput>> {

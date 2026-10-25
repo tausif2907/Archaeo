@@ -26,6 +26,8 @@ export interface Pricing {
 export interface ModelConfig {
   mode: "mock" | "live";
   embedDim: number;
+  /** Per-request timeout for live model calls */
+  timeoutMs: number;
   tasks: Record<ModelTask, TaskRoute>;
   providers: {
     meta: HttpProviderConfig;
@@ -77,6 +79,7 @@ export function loadModelConfig(env: NodeJS.ProcessEnv = process.env): ModelConf
   return {
     mode,
     embedDim: Number(env.EMBED_DIM) || 1024,
+    timeoutMs: (Number(env.MODEL_TIMEOUT_SECONDS) || 60) * 1000,
     tasks,
     providers: {
       meta: { baseUrl: env.META_API_BASE_URL ?? "", apiKey: env.META_API_KEY ?? "" },
