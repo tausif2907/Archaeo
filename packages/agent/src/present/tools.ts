@@ -61,15 +61,18 @@ const STOPWORDS = new Set(
   ),
 );
 
-export function keywords(query: string): string[] {
+export function keywords(query: string, max = 12): string[] {
   const raw = query.match(/[A-Za-z_][A-Za-z0-9_]{2,}/g) ?? [];
   const out = new Set<string>();
   for (const w of raw) {
     const lower = w.toLowerCase();
     if (!STOPWORDS.has(lower)) out.add(lower);
   }
-  return [...out].slice(0, 12);
+  return [...out].slice(0, max);
 }
+
+const MAX_TERMS = 12;
+const MAX_CANDIDATE_TERMS = 30;
 
 const SUFFIXES = ["ations", "ation", "ings", "ing", "ers", "er", "ed", "es", "s"];
 
@@ -103,20 +106,27 @@ export async function searchCode(ctx: ToolContext, query: string, limit = 8, opt
     WHERE "repoId" = ${repoId} AND "sourceType" = 'code' AND embedding IS NOT NULL
     ORDER BY embedding <=> ${literal}::vector LIMIT 40`;
 
-  const terms = keywords(query);
+  // Long queries (bug reports) name more words than are useful; collect extra candidates and keep the most distinctive.
+  const candidates = keywords(query, MAX_CANDIDATE_TERMS);
   let byKeyword: { row: ChunkRow; score: number }[] = [];
-  if (terms.length) {
-    const patterns = terms.map((t) => `%${t}%`);
+  if (candidates.length) {
+    const patterns = candidates.map((t) => `%${t}%`);
     const rows = await prisma.$queryRaw<ChunkRow[]>`
       SELECT id, path, "startLine", "endLine", text FROM "Chunk"
       WHERE "repoId" = ${repoId} AND "sourceType" = 'code' AND (text ILIKE ANY(${patterns}) OR path ILIKE ANY(${patterns}))`;
     const total = Math.max(1, await prisma.chunk.count({ where: { repoId, sourceType: "code" } }));
     // Matches must start at an identifier boundary ("bar" never matches inside `progressbar`). Short terms
     // must match whole; longer ones match by stem, so "confirmation" finds `confirm` and "validated" `validate`.
-    const matchers = new Map(terms.map((t) => [t, t.length <= 4 ? new RegExp(`(?<![a-z0-9])${t}(?![a-z0-9])`, "g") : new RegExp(`(?<![a-z0-9])${stem(t)}`, "g")]));
+    const matchers = new Map(candidates.map((t) => [t, t.length <= 4 ? new RegExp(`(?<![a-z0-9])${t}(?![a-z0-9])`, "g") : new RegExp(`(?<![a-z0-9])${stem(t)}`, "g")]));
     const count = (t: string, text: string) => text.match(matchers.get(t)!)?.length ?? 0;
     const lower = rows.map((r) => ({ row: r, text: r.text.toLowerCase(), header: r.text.split("\n", 1)[0]!.toLowerCase(), path: r.path.toLowerCase() }));
-    const idf = new Map(terms.map((t) => [t, Math.log(1 + total / (1 + lower.filter((r) => count(t, r.text) || count(t, r.path)).length))]));
+    const df = new Map(candidates.map((t) => [t, lower.filter((r) => count(t, r.text) || count(t, r.path)).length]));
+    // The rarest terms that occur at all; a question with few terms keeps every one, as before.
+    const terms = candidates
+      .filter((t) => df.get(t)! > 0)
+      .sort((a, b) => df.get(a)! - df.get(b)!)
+      .slice(0, MAX_TERMS);
+    const idf = new Map(terms.map((t) => [t, Math.log(1 + total / (1 + df.get(t)!))]));
     byKeyword = lower
       .map(({ row, text, header, path }) => {
         let score = 0;

@@ -68,7 +68,7 @@ export async function rankSuspects(ctx: ToolContext, input: { frames: StackFrame
   }
 
   // 3. Code similar to the bug description.
-  const query = [input.exception, input.text].filter(Boolean).join("\n").slice(0, 600);
+  const query = [input.exception, input.text].filter(Boolean).join("\n").slice(0, 2000);
   if (query.trim()) {
     const hits = await searchCode(ctx, query, 10, { excludeTests: true });
     for (const [rank, h] of hits.entries()) {
