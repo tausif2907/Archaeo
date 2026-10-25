@@ -190,9 +190,11 @@ function Attempt({ a, offered, config, repoId, repoName, onPublished }: { a: Fix
                 {busy ? "Publishing…" : "Approve and open pull request"}
               </button>
               <p className="text-xs text-stone-500">
-                {config?.publishing.enabled
-                  ? `Nothing is pushed until you approve. The pull request opens ${config.publishing.target === "upstream" ? `against ${repoName}` : "inside your fork"}.`
-                  : "Publishing is off: set GITHUB_TOKEN (allowed to fork and open pull requests) and restart the API."}
+                {config?.publicDemo
+                  ? "Publishing is turned off in this public demo. The patch above passed the full test suite in the sandbox."
+                  : config?.publishing.enabled
+                    ? `Nothing is pushed until you approve. The pull request opens ${config.publishing.target === "upstream" ? `against ${repoName}` : "inside your fork"}.`
+                    : "Publishing is off: set GITHUB_TOKEN (allowed to fork and open pull requests) and restart the API."}
               </p>
             </>
           )}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { EraDto, ErasResponse } from "@archaeo/shared";
 import { api } from "@/lib/api";
+import { useAppConfig } from "@/lib/use-config";
 import { CitedText } from "./cited-text";
 import { fmt } from "./repo-status";
 
@@ -28,6 +29,7 @@ function segmentWidths(eras: EraDto[]): number[] {
 export function Timeline({ repoId, repoUrl }: { repoId: string; repoUrl: string }) {
   const [data, setData] = useState<ErasResponse | null>(null);
   const [selected, setSelected] = useState(0);
+  const publicDemo = useAppConfig()?.publicDemo === true;
   const [error, setError] = useState<string | null>(null);
   const busy = data?.status === "pending" || data?.status === "running";
 
@@ -63,7 +65,7 @@ export function Timeline({ repoId, repoUrl }: { repoId: string; repoUrl: string 
         <h2 id="timeline-heading" className="text-lg font-semibold">
           Timeline
         </h2>
-        {data && !busy && (
+        {data && !busy && !publicDemo && (
           <button type="button" onClick={regenerate} className="text-sm font-medium text-stone-600 underline-offset-4 hover:underline dark:text-stone-400">
             Regenerate
           </button>

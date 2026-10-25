@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { RepoProgressDto, RepoStatus, StageProgress } from "@archaeo/shared";
 import Link from "next/link";
 import { API_URL, api } from "@/lib/api";
+import { useAppConfig } from "@/lib/use-config";
 
 export const STATUS_STYLES: Record<RepoStatus, string> = {
   queued: "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
@@ -58,6 +59,7 @@ function StageBar({ stage }: { stage: StageProgress }) {
 export function RepoStatusCard({ repoId, onProgress }: { repoId: string; onProgress?: (p: RepoProgressDto) => void }) {
   const [progress, setProgress] = useState<RepoProgressDto | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const publicDemo = useAppConfig()?.publicDemo === true;
   const status = progress?.repo.status;
   const settled = status === "ready" || status === "failed";
 
@@ -160,7 +162,7 @@ export function RepoStatusCard({ repoId, onProgress }: { repoId: string; onProgr
         </dl>
       )}
 
-      {settled && (
+      {settled && !publicDemo && (
         <button type="button" onClick={onReingest} className="text-sm font-medium text-stone-600 underline-offset-4 hover:underline dark:text-stone-400">
           Re-ingest
         </button>

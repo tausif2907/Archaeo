@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { parseGitHubUrl, type RepoDto } from "@archaeo/shared";
 import { API_URL, api } from "@/lib/api";
+import { useAppConfig } from "@/lib/use-config";
 import { STATUS_STYLES } from "./repo-status";
 
 export function RepoIntake() {
@@ -14,6 +15,7 @@ export function RepoIntake() {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [apiDown, setApiDown] = useState(false);
+  const publicDemo = useAppConfig()?.publicDemo === true;
 
   useEffect(() => {
     api.listRepos().then(setRepos, () => setApiDown(true));
@@ -38,26 +40,32 @@ export function RepoIntake() {
 
   return (
     <section className="space-y-8">
-      <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
-        <label htmlFor="repo-url" className="sr-only">
-          GitHub repository URL
-        </label>
-        <input
-          id="repo-url"
-          type="text"
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder="https://github.com/owner/repo"
-          className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 outline-none focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900"
-        />
-        <button
-          type="submit"
-          disabled={submitting}
-          className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-stone-100 dark:text-stone-900"
-        >
-          {submitting ? "Adding…" : "Excavate"}
-        </button>
-      </form>
+      {publicDemo ? (
+        <p className="rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-600 dark:border-stone-800 dark:bg-stone-900 dark:text-stone-300">
+          This public demo explores the repositories below, which are already ingested. To excavate your own, run Archaeo locally.
+        </p>
+      ) : (
+        <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
+          <label htmlFor="repo-url" className="sr-only">
+            GitHub repository URL
+          </label>
+          <input
+            id="repo-url"
+            type="text"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder="https://github.com/owner/repo"
+            className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 outline-none focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900"
+          />
+          <button
+            type="submit"
+            disabled={submitting}
+            className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-stone-100 dark:text-stone-900"
+          >
+            {submitting ? "Adding…" : "Excavate"}
+          </button>
+        </form>
+      )}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
       {apiDown && !error && (
         <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">

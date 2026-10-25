@@ -90,6 +90,8 @@ export interface AppDeps {
   enqueueIngest(repoId: string): Promise<void>;
   healthChecks?: Record<string, () => Promise<unknown>>;
   webOrigin?: string;
+  /** A public deployment: visitors explore the pre-ingested repos but cannot add or re-ingest repos, regenerate eras, or publish. */
+  publicDemo?: boolean;
 }
 
 export function toRepoDto(repo: Repo): RepoDto {
@@ -111,6 +113,12 @@ export function toRepoDto(repo: Repo): RepoDto {
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: process.env.NODE_ENV !== "test" && !process.env.VITEST });
   await app.register(cors, { origin: deps.webOrigin ?? true });
+  /** Refuses an action a public demo visitor may not take; returns true when it sent the refusal. */
+  const demoRefuses = (reply: FastifyReply, action: string): boolean => {
+    if (!deps.publicDemo) return false;
+    reply.code(403).send({ error: `${action} is turned off in this public demo. Run Archaeo locally to do this with your own repos.` });
+    return true;
+  };
 
   app.get("/health", async (_req, reply) => {
     const results: Record<string, "ok" | string> = {};
@@ -134,6 +142,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const ref = parseGitHubUrl(parsed.data.url)!;
     const existing = await deps.repos.findByUrl(ref.url);
     if (existing) return reply.code(200).send(toRepoDto(existing));
+    if (demoRefuses(reply, "Adding repositories")) return reply;
 
     const repo = await deps.repos.create({ url: ref.url, owner: ref.owner, name: ref.name });
     await deps.enqueueIngest(repo.id);
@@ -160,6 +169,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string } }>("/repos/:id/ingest", async (req, reply) => {
     const repo = await deps.repos.findById(req.params.id);
     if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    if (demoRefuses(reply, "Re-ingesting")) return reply;
     if (repo.status === "ingesting" || repo.status === "queued") {
       return reply.code(409).send({ error: "Ingest already in progress" });
     }
@@ -180,6 +190,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const repo = await deps.repos.findById(req.params.id);
     if (!repo) return reply.code(404).send({ error: "Repo not found" });
     if (repo.status !== "ready") return reply.code(409).send({ error: "Repo is not ingested yet" });
+    if (demoRefuses(reply, "Regenerating the timeline")) return reply;
     if (repo.erasStatus === "pending" || repo.erasStatus === "running") return reply.code(409).send({ error: "Eras are already being generated" });
     await deps.history.regenerateEras(repo.id);
     return reply.code(202).send({ status: "pending" });
@@ -273,7 +284,10 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
 
   // ------------------------------------------------------------ The Future
 
-  app.get("/config", async () => deps.future.config());
+  app.get("/config", async (): Promise<AppConfigDto> => {
+    const config = deps.future.config();
+    return deps.publicDemo ? { ...config, publicDemo: true, publishing: { ...config.publishing, enabled: false } } : config;
+  });
 
   /** Bug tracer, streamed as Server-Sent Events (run, tool activity, limit, report, error, done). */
   app.post<{ Params: { id: string } }>("/repos/:id/trace", async (req, reply) => {
@@ -310,6 +324,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   app.post<{ Params: { id: string; attemptId: string } }>("/repos/:id/fix-attempts/:attemptId/approve", async (req, reply) => {
     const repo = await readyRepo(req.params.id, reply);
     if (!repo) return reply;
+    if (demoRefuses(reply, "Publishing pull requests")) return reply;
     try {
       return await deps.future.approve(repo, req.params.attemptId);
     } catch (err) {

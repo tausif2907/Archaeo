@@ -392,6 +392,8 @@ export type TraceEvent = Exclude<AgentEvent, { type: "answer" }> | { type: "repo
 export interface AppConfigDto {
   publishing: { enabled: boolean; target: "fork" | "upstream" };
   sandbox: { provider: string };
+  /** Public deployment: only the pre-ingested repos; adding, re-ingesting, regenerating eras and publishing are off */
+  publicDemo?: boolean;
 }
 
 export interface FileEntry {

@@ -23,14 +23,16 @@ const fixQueue = new Queue<FixJobData>(QUEUES.fix, { connection: redis });
 const limits = loadAgentLimits();
 const githubToken = process.env.GITHUB_TOKEN || undefined;
 const publishTarget = process.env.PR_TARGET === "upstream" ? "upstream" : "fork";
-// Without a token there is no publisher, and approval reports that publishing isn't configured.
-const publisher = githubToken
+const publicDemo = process.env.PUBLIC_DEMO === "true";
+// Without a token there is no publisher, and approval reports that publishing isn't configured. A public demo never publishes.
+const publisher = githubToken && !publicDemo
   ? new GitHubForkPublisher({ token: githubToken, target: publishTarget, authorName: process.env.PR_AUTHOR_NAME || undefined, authorEmail: process.env.PR_AUTHOR_EMAIL || undefined })
   : null;
 const jobOpts = { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 } as const;
 
 const app = await buildApp({
   webOrigin: process.env.WEB_ORIGIN,
+  publicDemo,
   repos: {
     findByUrl: (url) => prisma.repo.findUnique({ where: { url } }),
     findById: (id) => prisma.repo.findUnique({ where: { id } }),

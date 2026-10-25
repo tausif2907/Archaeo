@@ -314,6 +314,37 @@ describe("the future", () => {
   });
 });
 
+describe("public demo", () => {
+  it("lets visitors explore pre-ingested repos but not add, re-ingest, regenerate eras or publish", async () => {
+    const repos = memoryStore();
+    const enqueued: string[] = [];
+    const history = fakeHistory();
+    const future = fakeFuture();
+    const deps = { history, present: fakePresent(), future, repos, enqueueIngest: async (id: string) => void enqueued.push(id) };
+    // The operator pre-ingests before turning the demo on.
+    await (await buildApp(deps)).inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
+    repos.rows[0]!.status = "ready";
+    const a = await buildApp({ ...deps, publicDemo: true });
+
+    expect((await a.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } })).statusCode).toBe(200);
+    const added = await a.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/c/d" } });
+    expect(added.statusCode).toBe(403);
+    expect(added.json().error).toMatch(/turned off in this public demo/);
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/ingest" })).statusCode).toBe(403);
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/eras" })).statusCode).toBe(403);
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/fix-attempts/a1/approve" })).statusCode).toBe(403);
+    expect(repos.rows).toHaveLength(1);
+    expect(enqueued).toEqual(["repo1"]);
+    expect(history.regenerated).toEqual([]);
+    expect(future.approved).toEqual([]);
+
+    // Asking, tracing and test-only fixes still work.
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/ask", payload: { question: "Where is x defined?" } })).statusCode).toBe(200);
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/runs/t1/fix" })).statusCode).toBe(202);
+    expect((await a.inject({ method: "GET", url: "/config" })).json()).toMatchObject({ publicDemo: true, publishing: { enabled: false } });
+  });
+});
+
 describe("buildStages", () => {
   const counts = { ...ZERO, files: 10, commits: 50, chunks: 100, embedded: 40, summarizedFiles: 5, summarizedCommits: 5 };
 
