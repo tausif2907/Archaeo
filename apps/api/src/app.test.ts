@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { Repo } from "@archaeo/db";
 import type { RepoCounts } from "@archaeo/shared";
-import { FlowError, WhyError } from "@archaeo/agent";
-import { buildApp, type HistoryService, type PresentService, type RepoStore } from "./app";
+import { ApprovalError, FlowError, WhyError } from "@archaeo/agent";
+import { buildApp, FutureError, type FutureService, type HistoryService, type PresentService, type RepoStore } from "./app";
 import { buildStages } from "./progress";
 
 const ZERO: RepoCounts = {
@@ -44,6 +44,7 @@ function memoryStore(): RepoStore & { rows: Repo[] } {
         githubSyncedAt: null,
         erasStatus: null,
         erasMessage: null,
+        sandboxConfig: null,
         stats: null,
         createdAt: now,
         updatedAt: now,
@@ -89,11 +90,39 @@ function fakePresent(): PresentService {
   };
 }
 
+function fakeFuture(): FutureService & { approved: string[]; fixes: string[] } {
+  const approved: string[] = [];
+  const fixes: string[] = [];
+  const report = { hypothesis: "h", suspects: [] } as never;
+  return {
+    approved,
+    fixes,
+    config: () => ({ publishing: { enabled: false, target: "fork" }, sandbox: { provider: "docker" } }),
+    trace: async (_repo, _input, onEvent) => {
+      onEvent({ type: "run", runId: "t1" });
+      onEvent({ type: "report", report });
+      return { runId: "t1", report };
+    },
+    cases: async () => [],
+    run: async (_repoId, runId) => (runId === "t1" ? ({ id: "t1" } as never) : null),
+    startFix: async (_repo, traceRunId) => {
+      if (traceRunId !== "t1") throw new FutureError("Bug trace not found", 404);
+      fixes.push(traceRunId);
+      return { id: "f1" } as never;
+    },
+    approve: async (_repo, attemptId) => {
+      if (attemptId === "failing") throw new ApprovalError("Only a patch that passed the tests can be approved", 409);
+      approved.push(attemptId);
+      return { prUrl: "https://github.com/me/r/pull/1", branch: "archaeo/x" };
+    },
+  };
+}
+
 describe("api", () => {
   it("creates a repo once and enqueues ingest", async () => {
     const repos = memoryStore();
     const enqueued: string[] = [];
-    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), repos, enqueueIngest: async (id) => void enqueued.push(id) });
+    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), future: fakeFuture(), repos, enqueueIngest: async (id) => void enqueued.push(id) });
 
     const first = await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/pallets/click.git" } });
     expect(first.statusCode).toBe(201);
@@ -110,7 +139,7 @@ describe("api", () => {
   });
 
   it("rejects non-GitHub URLs", async () => {
-    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), repos: memoryStore(), enqueueIngest: async () => {} });
+    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), future: fakeFuture(), repos: memoryStore(), enqueueIngest: async () => {} });
     const res = await app.inject({ method: "POST", url: "/repos", payload: { url: "https://example.com/x" } });
     expect(res.statusCode).toBe(400);
   });
@@ -118,7 +147,7 @@ describe("api", () => {
   it("re-ingests only when no ingest is in flight", async () => {
     const repos = memoryStore();
     const enqueued: string[] = [];
-    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), repos, enqueueIngest: async (id) => void enqueued.push(id) });
+    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), future: fakeFuture(), repos, enqueueIngest: async (id) => void enqueued.push(id) });
     await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
 
     expect((await app.inject({ method: "POST", url: "/repos/repo1/ingest" })).statusCode).toBe(409);
@@ -131,7 +160,7 @@ describe("api", () => {
 
   it("returns stage progress with counts", async () => {
     const repos = memoryStore();
-    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), repos, enqueueIngest: async () => {} });
+    const app = await buildApp({ history: fakeHistory(), present: fakePresent(), future: fakeFuture(), repos, enqueueIngest: async () => {} });
     await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
     Object.assign(repos.rows[0]!, { status: "ingesting", stage: "history" });
 
@@ -143,7 +172,7 @@ describe("api", () => {
 
   it("reports degraded health when a check fails", async () => {
     const app = await buildApp({
-      history: fakeHistory(), present: fakePresent(),
+      history: fakeHistory(), present: fakePresent(), future: fakeFuture(),
       repos: memoryStore(),
       enqueueIngest: async () => {},
       healthChecks: { db: async () => 1, redis: async () => Promise.reject(new Error("down")) },
@@ -158,7 +187,7 @@ describe("the past", () => {
   async function readyApp() {
     const repos = memoryStore();
     const history = fakeHistory();
-    const app = await buildApp({ history, present: fakePresent(), repos, enqueueIngest: async () => {} });
+    const app = await buildApp({ history, present: fakePresent(), future: fakeFuture(), repos, enqueueIngest: async () => {} });
     await app.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
     return { app, repos, history };
   }
@@ -194,7 +223,7 @@ describe("the past", () => {
 describe("the present", () => {
   async function app(ready = true) {
     const repos = memoryStore();
-    const a = await buildApp({ history: fakeHistory(), present: fakePresent(), repos, enqueueIngest: async () => {} });
+    const a = await buildApp({ history: fakeHistory(), present: fakePresent(), future: fakeFuture(), repos, enqueueIngest: async () => {} });
     await a.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
     if (ready) repos.rows[0]!.status = "ready";
     return a;
@@ -232,6 +261,56 @@ describe("the present", () => {
     expect(missing.json().error).toBe("Entry point nope not found");
     expect((await a.inject({ method: "POST", url: "/repos/repo1/flow", payload: { symbol: "main" } })).json().entry).toBe("main");
     expect((await a.inject({ method: "GET", url: "/repos/repo1/symbols/search?q=m" })).json()).toEqual([]);
+  });
+});
+
+describe("the future", () => {
+  async function app(ready = true) {
+    const repos = memoryStore();
+    const future = fakeFuture();
+    const a = await buildApp({ history: fakeHistory(), present: fakePresent(), future, repos, enqueueIngest: async () => {} });
+    await a.inject({ method: "POST", url: "/repos", payload: { url: "https://github.com/a/b" } });
+    if (ready) repos.rows[0]!.status = "ready";
+    return { a, future };
+  }
+
+  it("streams a bug trace and validates its input", async () => {
+    const { a } = await app();
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/trace", payload: { text: "short" } })).statusCode).toBe(400);
+    const res = await a.inject({ method: "POST", url: "/repos/repo1/trace", payload: { text: "Traceback ... ValueError: boom happened here" } });
+    expect(res.headers["content-type"]).toContain("text/event-stream");
+    expect(res.body).toContain("event: report");
+    expect(res.body.trim().endsWith("data: {}")).toBe(true);
+  });
+
+  it("starting a fix never approves or publishes anything", async () => {
+    const { a, future } = await app();
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/runs/t1/fix" })).statusCode).toBe(202);
+    expect((await a.inject({ method: "POST", url: "/repos/repo1/runs/nope/fix" })).statusCode).toBe(404);
+    expect(future.fixes).toEqual(["t1"]);
+    expect(future.approved).toEqual([]);
+  });
+
+  it("publishes only through the explicit approve route, and refuses unapprovable attempts", async () => {
+    const { a, future } = await app();
+    const bad = await a.inject({ method: "POST", url: "/repos/repo1/fix-attempts/failing/approve" });
+    expect(bad.statusCode).toBe(409);
+    expect(bad.json().error).toBe("Only a patch that passed the tests can be approved");
+    const ok = await a.inject({ method: "POST", url: "/repos/repo1/fix-attempts/a1/approve" });
+    expect(ok.json().prUrl).toBe("https://github.com/me/r/pull/1");
+    expect(future.approved).toEqual(["a1"]);
+
+    const { a: notReady, future: f2 } = await app(false);
+    expect((await notReady.inject({ method: "POST", url: "/repos/repo1/fix-attempts/a1/approve" })).statusCode).toBe(409);
+    expect(f2.approved).toEqual([]);
+  });
+
+  it("serves config, runs and cases", async () => {
+    const { a } = await app();
+    expect((await a.inject({ method: "GET", url: "/config" })).json().publishing.target).toBe("fork");
+    expect((await a.inject({ method: "GET", url: "/repos/repo1/runs/t1" })).statusCode).toBe(200);
+    expect((await a.inject({ method: "GET", url: "/repos/repo1/runs/zzz" })).statusCode).toBe(404);
+    expect((await a.inject({ method: "GET", url: "/repos/repo1/cases" })).json()).toEqual([]);
   });
 });
 

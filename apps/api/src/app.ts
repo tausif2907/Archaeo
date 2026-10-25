@@ -1,14 +1,20 @@
 import cors from "@fastify/cors";
-import Fastify, { type FastifyInstance, type FastifyReply } from "fastify";
-import { FlowError, WhyError } from "@archaeo/agent";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
+import { ApprovalError, FlowError, WhyError } from "@archaeo/agent";
 import type { Repo } from "@archaeo/db";
 import {
   AskInput,
   CreateRepoInput,
   FlowInput,
   parseGitHubUrl,
+  TraceInput,
   WhyInput,
   type AgentEvent,
+  type AppConfigDto,
+  type BugReport,
+  type FixRunDto,
+  type TraceEvent,
+  type TraceRunDto,
   type AskResult,
   type CodeFile,
   type FlowTrace,
@@ -55,10 +61,32 @@ export interface PresentService {
   flow(repo: Repo, input: FlowInput): Promise<FlowTrace>;
 }
 
+export class FutureError extends Error {
+  constructor(
+    message: string,
+    readonly status: 404 | 409,
+  ) {
+    super(message);
+  }
+}
+
+/** "The Future": bug tracing, sandboxed fix runs, approval-gated PRs. */
+export interface FutureService {
+  config(): AppConfigDto;
+  trace(repo: Repo, input: TraceInput, onEvent: (e: TraceEvent) => void, signal: AbortSignal): Promise<{ runId: string; report: BugReport }>;
+  cases(repoId: string): Promise<TraceRunDto[]>;
+  run(repoId: string, runId: string): Promise<TraceRunDto | FixRunDto | null>;
+  /** Queues sandboxed fix attempts for a finished trace. Never publishes. */
+  startFix(repo: Repo, traceRunId: string): Promise<FixRunDto>;
+  /** The only publishing path: explicit approval of the offered passing patch. */
+  approve(repo: Repo, attemptId: string): Promise<{ prUrl: string; branch: string }>;
+}
+
 export interface AppDeps {
   repos: RepoStore;
   history: HistoryService;
   present: PresentService;
+  future: FutureService;
   enqueueIngest(repoId: string): Promise<void>;
   healthChecks?: Record<string, () => Promise<unknown>>;
   webOrigin?: string;
@@ -240,32 +268,88 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
     const input = AskInput.safeParse(req.body);
     if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Invalid input" });
 
-    reply.hijack();
-    const origin = deps.webOrigin ?? req.headers.origin ?? "*";
-    reply.raw.writeHead(200, {
-      "content-type": "text/event-stream; charset=utf-8",
-      "cache-control": "no-cache, no-transform",
-      connection: "keep-alive",
-      "x-accel-buffering": "no",
-      "access-control-allow-origin": origin,
-      vary: "Origin",
-    });
-    const abort = new AbortController();
-    reply.raw.on("close", () => {
-      if (!reply.raw.writableFinished) abort.abort();
-    });
-    const send = (event: string, data: unknown) => {
-      if (!reply.raw.writableEnded) reply.raw.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
-    };
+    await streamEvents(req, reply, deps.webOrigin, (send, signal) => deps.present.ask(repo, input.data.question, send, signal));
+  });
+
+  // ------------------------------------------------------------ The Future
+
+  app.get("/config", async () => deps.future.config());
+
+  /** Bug tracer, streamed as Server-Sent Events (run, tool activity, limit, report, error, done). */
+  app.post<{ Params: { id: string } }>("/repos/:id/trace", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
+    const input = TraceInput.safeParse(req.body);
+    if (!input.success) return reply.code(400).send({ error: input.error.issues[0]?.message ?? "Invalid input" });
+    await streamEvents(req, reply, deps.webOrigin, (send, signal) => deps.future.trace(repo, input.data, send, signal));
+  });
+
+  app.get<{ Params: { id: string } }>("/repos/:id/cases", async (req, reply) => {
+    const repo = await deps.repos.findById(req.params.id);
+    if (!repo) return reply.code(404).send({ error: "Repo not found" });
+    return deps.future.cases(repo.id);
+  });
+
+  app.get<{ Params: { id: string; runId: string } }>("/repos/:id/runs/:runId", async (req, reply) => {
+    const run = await deps.future.run(req.params.id, req.params.runId);
+    return run ?? reply.code(404).send({ error: "Run not found" });
+  });
+
+  app.post<{ Params: { id: string; runId: string } }>("/repos/:id/runs/:runId/fix", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
     try {
-      await deps.present.ask(repo, input.data.question, (e) => send(e.type, e), abort.signal);
+      return reply.code(202).send(await deps.future.startFix(repo, req.params.runId));
     } catch (err) {
-      send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
-    } finally {
-      send("done", {});
-      reply.raw.end();
+      if (err instanceof FutureError) return reply.code(err.status).send({ error: err.message });
+      throw err;
+    }
+  });
+
+  /** Explicit human approval: the only route that pushes code or opens a pull request. */
+  app.post<{ Params: { id: string; attemptId: string } }>("/repos/:id/fix-attempts/:attemptId/approve", async (req, reply) => {
+    const repo = await readyRepo(req.params.id, reply);
+    if (!repo) return reply;
+    try {
+      return await deps.future.approve(repo, req.params.attemptId);
+    } catch (err) {
+      if (err instanceof ApprovalError) return reply.code(err.status).send({ error: err.message });
+      throw err;
     }
   });
 
   return app;
+}
+
+/** Streams events as SSE until `run` settles; aborts `run` when the client disconnects. */
+async function streamEvents<E extends { type: string }>(
+  req: FastifyRequest,
+  reply: FastifyReply,
+  webOrigin: string | undefined,
+  run: (send: (e: E) => void, signal: AbortSignal) => Promise<unknown>,
+): Promise<void> {
+  reply.hijack();
+  reply.raw.writeHead(200, {
+    "content-type": "text/event-stream; charset=utf-8",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+    "access-control-allow-origin": webOrigin ?? req.headers.origin ?? "*",
+    vary: "Origin",
+  });
+  const abort = new AbortController();
+  reply.raw.on("close", () => {
+    if (!reply.raw.writableFinished) abort.abort();
+  });
+  const send = (event: string, data: unknown) => {
+    if (!reply.raw.writableEnded) reply.raw.write("event: " + event + "\ndata: " + JSON.stringify(data) + "\n\n");
+  };
+  try {
+    await run((e) => send(e.type, e), abort.signal);
+  } catch (err) {
+    send("error", { type: "error", message: err instanceof Error ? err.message : String(err) });
+  } finally {
+    send("done", {});
+    reply.raw.end();
+  }
 }
