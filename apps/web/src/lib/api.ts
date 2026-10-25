@@ -1,6 +1,11 @@
 import type {
   AgentEvent,
+  AppConfigDto,
   CodeFile,
+  FixRunDto,
+  TraceEvent,
+  TraceInput,
+  TraceRunDto,
   ErasResponse,
   FileEntry,
   FlowInput,
@@ -26,12 +31,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return body;
 }
 
-/** POSTs a question and calls `onEvent` for each server-sent event until the stream ends. */
-async function ask(id: string, question: string, onEvent: (e: AgentEvent) => void, signal?: AbortSignal): Promise<void> {
-  const res = await fetch(`${API_URL}/repos/${id}/ask`, {
+/** POSTs `body` and calls `onEvent` for each server-sent event until the stream ends. */
+async function streamSse<E>(path: string, body: unknown, onEvent: (e: E) => void, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify(body),
     signal,
   });
   if (!res.ok || !res.body) {
@@ -52,7 +57,7 @@ async function ask(id: string, question: string, onEvent: (e: AgentEvent) => voi
       const event = /^event: (.+)$/m.exec(block)?.[1];
       const data = /^data: (.+)$/m.exec(block)?.[1];
       if (!event || !data || event === "done") continue;
-      onEvent(JSON.parse(data) as AgentEvent);
+      onEvent(JSON.parse(data) as E);
     }
   }
 }
@@ -72,5 +77,11 @@ export const api = {
   file: (id: string, path: string) => request<CodeFile>(`/repos/${id}/file?path=${encodeURIComponent(path)}`),
   searchSymbols: (id: string, q: string) => request<SymbolHit[]>(`/repos/${id}/symbols/search?q=${encodeURIComponent(q)}`),
   flow: (id: string, input: FlowInput) => request<FlowTrace>(`/repos/${id}/flow`, { method: "POST", body: JSON.stringify(input) }),
-  ask,
+  ask: (id: string, question: string, onEvent: (e: AgentEvent) => void, signal?: AbortSignal) => streamSse(`/repos/${id}/ask`, { question }, onEvent, signal),
+  trace: (id: string, input: TraceInput, onEvent: (e: TraceEvent) => void, signal?: AbortSignal) => streamSse(`/repos/${id}/trace`, input, onEvent, signal),
+  config: () => request<AppConfigDto>("/config"),
+  cases: (id: string) => request<TraceRunDto[]>(`/repos/${id}/cases`),
+  run: <T extends TraceRunDto | FixRunDto>(id: string, runId: string) => request<T>(`/repos/${id}/runs/${runId}`),
+  startFix: (id: string, traceRunId: string) => request<FixRunDto>(`/repos/${id}/runs/${traceRunId}/fix`, { method: "POST" }),
+  approve: (id: string, attemptId: string) => request<{ prUrl: string; branch: string }>(`/repos/${id}/fix-attempts/${attemptId}/approve`, { method: "POST" }),
 };

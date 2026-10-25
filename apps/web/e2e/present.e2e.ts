@@ -61,6 +61,26 @@ test("asks a question and opens a cited line range in the code viewer", async ({
   await expect(viewer).toBeHidden();
 });
 
+test("traces a bug, runs sandboxed fix attempts, and never offers a failing patch", async ({ page }) => {
+  // Real sandbox + offline mock model: the mock's patch never applies, so nothing may be offered.
+  test.setTimeout(300_000);
+  await page.goto(`/repos/${repoId}#fix`);
+  await page
+    .getByLabel("Error, stack trace or bug description")
+    .fill("The usage line for an optional Choice argument shows doubled brackets: `Usage: cli [OPTIONS] [[foo|bar|baz]]` instead of `[foo|bar|baz]`.");
+  await page.getByRole("button", { name: "Trace bug" }).click();
+  await expect(page.getByText("Case file")).toBeVisible({ timeout: 60_000 });
+  // Ranking quality is measured by `pnpm eval:bugs`; here: suspects are listed and point at source code.
+  await expect(page.getByRole("button", { name: /src\/click\/.+\.py:\d+/ }).first()).toBeVisible();
+
+  await page.getByRole("button", { name: "Generate a tested fix" }).click();
+  await expect(page.getByText(/Finished without a passing patch|Passing patch ready/)).toBeVisible({ timeout: 240_000 });
+  await expect(page.getByText("Finished without a passing patch")).toBeVisible();
+  await expect(page.getByText("Attempt 3", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Approve and open pull request" })).toHaveCount(0);
+  await expect(page.getByText(/Baseline tests: \d+ passed/)).toBeVisible();
+});
+
 test("traces a request flow and highlights its hops on the map", async ({ page }) => {
   await page.goto(`/repos/${repoId}#map`);
   await page.waitForSelector(".react-flow__edge", { state: "attached" });

@@ -7,6 +7,7 @@ import type { RepoProgressDto } from "@archaeo/shared";
 import { ArchitectureMap } from "@/components/arch-map";
 import { AskPanel } from "@/components/ask-panel";
 import { CodeViewerProvider } from "@/components/code-viewer";
+import { FixPanel } from "@/components/fix-panel";
 import { RepoStatusCard } from "@/components/repo-status";
 import { Timeline } from "@/components/timeline";
 import { WhyPanel } from "@/components/why-panel";
@@ -16,6 +17,7 @@ const TABS = [
   { id: "ask", label: "Ask" },
   { id: "timeline", label: "Timeline" },
   { id: "why", label: "Why" },
+  { id: "fix", label: "Fix" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -64,6 +66,7 @@ export default function RepoPage() {
             {tab === "ask" && <AskPanel repoId={id} repoUrl={repo.url} />}
             {tab === "timeline" && <Timeline repoId={id} repoUrl={repo.url} />}
             {tab === "why" && <WhyPanel repoId={id} repoUrl={repo.url} />}
+            {tab === "fix" && <FixPanel repoId={id} repoUrl={repo.url} repoName={`${repo.owner}/${repo.name}`} />}
           </div>
         </CodeViewerProvider>
       )}
