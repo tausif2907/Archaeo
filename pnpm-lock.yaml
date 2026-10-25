@@ -50,12 +50,18 @@ importers:
       '@archaeo/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@archaeo/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
       '@archaeo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
       '@fastify/cors':
         specifier: ^10.0.1
         version: 10.1.0
+      '@octokit/rest':
+        specifier: ^22.0.0
+        version: 22.0.1
       bullmq:
         specifier: ^5.34.0
         version: 5.81.5
@@ -111,6 +117,9 @@ importers:
       '@archaeo/models':
         specifier: workspace:*
         version: link:../../packages/models
+      '@archaeo/sandbox':
+        specifier: workspace:*
+        version: link:../../packages/sandbox
       '@archaeo/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -132,9 +141,15 @@ importers:
       '@archaeo/models':
         specifier: workspace:*
         version: link:../models
+      '@archaeo/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@archaeo/shared':
         specifier: workspace:*
         version: link:../shared
+      '@octokit/rest':
+        specifier: ^22.0.0
+        version: 22.0.1
 
   packages/db:
     dependencies:
@@ -163,6 +178,9 @@ importers:
       '@archaeo/models':
         specifier: workspace:*
         version: link:../models
+      '@archaeo/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       '@archaeo/shared':
         specifier: workspace:*
         version: link:../shared
@@ -190,7 +208,11 @@ importers:
 
   packages/models: {}
 
-  packages/sandbox: {}
+  packages/sandbox:
+    dependencies:
+      '@archaeo/shared':
+        specifier: workspace:*
+        version: link:../shared
 
   packages/shared:
     dependencies:

@@ -19,7 +19,8 @@
     "eval:history": "pnpm --filter @archaeo/evals history",
     "check:citations": "pnpm --filter @archaeo/evals check:citations",
     "eval:qa": "pnpm --filter @archaeo/evals qa",
-    "e2e": "pnpm --filter @archaeo/web e2e"
+    "e2e": "pnpm --filter @archaeo/web e2e",
+    "eval:bugs": "pnpm --filter @archaeo/evals bugs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
