@@ -123,9 +123,15 @@ export async function fileHistory(dir: string, path: string, max = 300): Promise
 }
 
 /** Commits that touched a line range (e.g. a symbol), newest first. */
-export async function lineHistory(dir: string, path: string, startLine: number, endLine: number, max = 100): Promise<CommitInfo[]> {
+export async function lineHistory(dir: string, path: string, startLine: number, endLine: number, max = 1000): Promise<CommitInfo[]> {
   const out = await simpleGit(dir).raw(["log", "-s", `--max-count=${max}`, `--format=${LOG_FORMAT}`, "-L", `${startLine},${endLine}:${path}`]);
   return parseGitLog(out);
+}
+
+/** The oldest commit that changed how often `text` occurs in the file (following renames): when it was first added. */
+export async function firstAddedIn(dir: string, path: string, text: string): Promise<string | null> {
+  const out = await simpleGit(dir).raw(["log", "--follow", "--format=%H", "-S", text, "--", path]);
+  return out.trim().split("\n").filter(Boolean).pop() ?? null;
 }
 
 export interface BlameShare {

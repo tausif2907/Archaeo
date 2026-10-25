@@ -5,6 +5,7 @@ import { citationIndex, findCitations, validateCitations } from "./citations";
 import { detectEras, type EraCommit } from "./eras";
 import { cleanExcerpt, parseJsonObject } from "./json";
 import { buildEraEvidence, eraFingerprint, fallbackNarrative, writeEraNarrative, type EvidenceCommit } from "./narrative";
+import { definitionToken } from "./why";
 
 const SHAS = ["3c4cacb1bba9f2b6f62628cf1783ce64aed62436", "3c4cacf000000000000000000000000000000000", "af24c8d0000000000000000000000000000000aa"];
 const index = citationIndex(SHAS, [1622, 1329, 7]);
@@ -169,5 +170,38 @@ describe("json helpers", () => {
     expect(cleanExcerpt("Resolves #1484 Resolves #780 (Files and paths)\n\nThe new system lets each type define its own completions.")).toBe(
       "The new system lets each type define its own completions.",
     );
+  });
+});
+
+describe("why: symbol definition", () => {
+  const py = [
+    "class UsageError(Exception):",
+    "    pass",
+    "",
+    "class NoSuchCommand(UsageError):",
+    '    """A command name was misspelled."""',
+    "",
+    "class Option:",
+    "    def make_metavar(self):",
+    "        return 'X'",
+    "",
+    "class Argument:",
+    "    @property",
+    "    def make_metavar(self):",
+    "        return 'Y'",
+  ].join("\n");
+
+  it("finds the unique definition text of a class or function", () => {
+    expect(definitionToken(py, 4, 5, "NoSuchCommand")).toBe("class NoSuchCommand");
+    expect(definitionToken("export default class Request extends Duplex {\n}", 1, 2, "Request")).toBe("export default class Request");
+    expect(definitionToken("const calculateRetryDelay = ({attemptCount}) => {\n};", 1, 2, "calculateRetryDelay")).toBe("const calculateRetryDelay");
+  });
+
+  it("gives up when the text is ambiguous or has no keyword", () => {
+    // Two classes define make_metavar, so searching history for it could find the other one.
+    expect(definitionToken(py, 12, 14, "make_metavar")).toBeNull();
+    // A TypeScript method has no keyword before its name.
+    expect(definitionToken("class A {\n  merge(x) {}\n}", 2, 2, "merge")).toBeNull();
+    expect(definitionToken(py, 1, 2, "Missing")).toBeNull();
   });
 });

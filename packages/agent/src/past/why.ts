@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { PrismaClient } from "@archaeo/db";
-import { blame, fileHistory, lineHistory, type CommitInfo } from "@archaeo/ingest";
+import { blame, fileHistory, firstAddedIn, lineHistory, type CommitInfo } from "@archaeo/ingest";
 import type { Models } from "@archaeo/models";
 import type { WhyCommit, WhyResult } from "@archaeo/shared";
 import { loadCitationIndex, validateCitations } from "./citations";
@@ -34,6 +35,25 @@ export interface WhyDeps {
 
 const MAJOR_CHANGES = 5;
 
+/**
+ * The text that defines a symbol, e.g. "class Group" or "def make_metavar": the first line in its range that names
+ * it, cut after the name. Null when that text is not unique in the file (several classes define make_metavar)
+ * or no keyword precedes the name, since searching history for it would then find the wrong commit.
+ */
+export function definitionToken(fileText: string, startLine: number, endLine: number, name: string): string | null {
+  const lines = fileText.split("\n");
+  const named = new RegExp(`(?<![\\w$#])${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\w$])`);
+  for (let i = Math.max(startLine - 1, 0); i < Math.min(endLine, lines.length); i++) {
+    const line = lines[i]!.trimStart();
+    const m = named.exec(line);
+    if (!m) continue;
+    const token = line.slice(0, m.index + name.length);
+    if (!/\s/.test(token)) return null;
+    return fileText.split(token).length === 2 ? token : null;
+  }
+  return null;
+}
+
 const SYSTEM = `You explain why a piece of code exists, using only its git history and pull requests.
 Cover: when and by whom it was introduced and the stated reason; how it evolved (major changes); what shaped its current form.
 Cite every factual sentence with commit SHAs or PR numbers in square brackets: [abc1234] or [#123]. Never cite anything not in the evidence.
@@ -61,8 +81,16 @@ export async function explainWhy(deps: WhyDeps, target: WhyTarget): Promise<WhyR
     range = { start: target.startLine, end: target.endLine, symbol: null };
   }
 
-  const history = range ? await lineHistory(repoDir, path, range.start, range.end) : await fileHistory(repoDir, path);
+  let history = range ? await lineHistory(repoDir, path, range.start, range.end) : await fileHistory(repoDir, path);
   if (history.length === 0) throw new WhyError(`No git history for ${path}`, 404);
+  if (range?.symbol) {
+    // git log -L can carry a newly added symbol back into older code that merely looked similar, so its history
+    // starts at the commit that first added the definition line, when that line is unique in the file.
+    const token = definitionToken(await readFile(join(repoDir, path), "utf8"), range.start, range.end, range.symbol.split(".").pop()!);
+    const added = token ? await firstAddedIn(repoDir, path, token) : null;
+    const at = added ? history.findIndex((c) => c.sha === added) : -1;
+    if (at >= 0) history = history.slice(0, at + 1);
+  }
 
   // Lines changed per commit: from the file's own numstat (file history), or the stored commit stats (line history).
   const linesFor = await linesChangedLookup(prisma, repoId, path, history, !range);
