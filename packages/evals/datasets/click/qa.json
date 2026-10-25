@@ -1,0 +1,26 @@
+{
+  "repo": "https://github.com/pallets/click",
+  "notes": "Expected locations were found by reading click's source (grep for the classes/functions), not with Archaeo. A question passes when a citation of at most 300 lines overlaps one of the expected symbols and every citation is valid.",
+  "questions": [
+    { "id": "zsh-completion", "question": "Where is zsh shell completion implemented?", "expected": { "files": ["src/click/shell_completion.py"], "symbols": ["ZshComplete"] } },
+    { "id": "envvar-values", "question": "How does click read option values from environment variables?", "expected": { "files": ["src/click/core.py"], "symbols": ["Parameter.resolve_envvar_value", "Option.resolve_envvar_value", "Parameter.value_from_envvar", "Option.value_from_envvar"] } },
+    { "id": "progress-bar", "question": "Where is the progress bar implemented?", "expected": { "files": ["src/click/_termui_impl.py", "src/click/termui.py"], "symbols": ["ProgressBar", "progressbar"] } },
+    { "id": "clirunner-output", "question": "How does CliRunner capture the output of a command in tests?", "expected": { "files": ["src/click/testing.py"], "symbols": ["CliRunner.isolation", "CliRunner.invoke", "CliRunner"] } },
+    { "id": "path-validation", "question": "Where are file system path parameters validated, for example checking that a path exists?", "expected": { "files": ["src/click/types.py"], "symbols": ["Path", "Path.convert"] } },
+    { "id": "open-editor", "question": "How does click open a text editor for the user to edit text?", "expected": { "files": ["src/click/_termui_impl.py", "src/click/termui.py"], "symbols": ["Editor", "Editor.edit", "edit"] } },
+    { "id": "help-formatting", "question": "Where is help text formatted and wrapped to the terminal width?", "expected": { "files": ["src/click/formatting.py"], "symbols": ["HelpFormatter", "wrap_text"] } },
+    { "id": "option-parser", "question": "Which code parses the command line into options and arguments?", "expected": { "files": ["src/click/parser.py"], "symbols": ["_OptionParser"] } },
+    { "id": "help-option", "question": "Where is the --help option created and handled?", "expected": { "files": ["src/click/core.py", "src/click/decorators.py"], "symbols": ["Command.get_help_option", "help_option"] } },
+    { "id": "confirm-prompt", "question": "How does click ask the user for a yes/no confirmation?", "expected": { "files": ["src/click/termui.py"], "symbols": ["confirm"] } },
+    { "id": "bash-completion", "question": "How is bash shell completion implemented?", "expected": { "files": ["src/click/shell_completion.py"], "symbols": ["BashComplete"] } },
+    { "id": "program-name", "question": "How does click work out the program name shown in the usage line?", "expected": { "files": ["src/click/utils.py"], "symbols": ["_detect_program_name"] } },
+    { "id": "version-option", "question": "Where is the --version option implemented?", "expected": { "files": ["src/click/decorators.py"], "symbols": ["version_option"] } },
+    { "id": "app-dir", "question": "How does click find the directory where an application should store its config files?", "expected": { "files": ["src/click/utils.py"], "symbols": ["get_app_dir"] } },
+    { "id": "styling", "question": "How are colors and styles applied to terminal output?", "expected": { "files": ["src/click/termui.py"], "symbols": ["style", "unstyle"] } },
+    { "id": "pager", "question": "How does click send long output through a pager?", "expected": { "files": ["src/click/termui.py", "src/click/_termui_impl.py"], "symbols": ["echo_via_pager", "get_pager_file"] } },
+    { "id": "prompt", "question": "How does click prompt the user to type in a value?", "expected": { "files": ["src/click/termui.py"], "symbols": ["prompt"] } },
+    { "id": "bad-parameter", "question": "Which exception reports an invalid parameter value, and how is its message built?", "expected": { "files": ["src/click/exceptions.py"], "symbols": ["BadParameter", "BadParameter.format_message"] } },
+    { "id": "subcommand-dispatch", "question": "How does a group find the subcommand to run from the command line?", "expected": { "files": ["src/click/core.py"], "symbols": ["Group.resolve_command", "Group.get_command"] } },
+    { "id": "int-range", "question": "How are integer ranges validated, including clamping?", "expected": { "files": ["src/click/types.py"], "symbols": ["IntRange", "_NumberRangeBase", "_NumberRangeBase.convert"] } }
+  ]
+}

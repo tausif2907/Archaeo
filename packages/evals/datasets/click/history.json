@@ -1,0 +1,26 @@
+{
+  "repo": "https://github.com/pallets/click",
+  "notes": "Ground truth from git, not from Archaeo: `git log --follow --diff-filter=A` for files, the oldest `git log -L` commit for symbols. PR numbers only where membership was confirmed (squash-merge `(#N)` subject, or the commit is on the PR's branch). A question passes when the answer names the introducing commit and PR and cites them, and every citation exists.",
+  "questions": [
+    { "id": "shell-completion-origin", "question": "Why does src/click/shell_completion.py exist?", "target": { "path": "src/click/shell_completion.py" }, "expected": { "introducedSha": "3c4cacb1bba9f2b6f62628cf1783ce64aed62436", "prNumbers": [1622] } },
+    { "id": "compat-origin", "question": "Why does src/click/_compat.py exist?", "target": { "path": "src/click/_compat.py" }, "expected": { "introducedSha": "0ed40c8", "prNumbers": [] } },
+    { "id": "globals-origin", "question": "Why does src/click/globals.py exist?", "target": { "path": "src/click/globals.py" }, "expected": { "introducedSha": "695ca34", "prNumbers": [379] } },
+    { "id": "testing-origin", "question": "Why does src/click/testing.py exist?", "target": { "path": "src/click/testing.py" }, "expected": { "introducedSha": "3f695c6", "prNumbers": [] } },
+    { "id": "parameter-source-origin", "question": "Why does ParameterSource exist in src/click/core.py?", "target": { "path": "src/click/core.py", "symbol": "ParameterSource" }, "expected": { "introducedSha": "af24c8d", "prNumbers": [1329] } },
+    { "id": "termui-impl-origin", "question": "Why does src/click/_termui_impl.py exist?", "target": { "path": "src/click/_termui_impl.py" }, "expected": { "introducedSha": "64d7fcf", "prNumbers": [] } },
+    { "id": "winconsole-origin", "question": "Why does src/click/_winconsole.py exist?", "target": { "path": "src/click/_winconsole.py" }, "expected": { "introducedSha": "bcf8fec", "prNumbers": [] } },
+    { "id": "textwrap-origin", "question": "Why does src/click/_textwrap.py exist?", "target": { "path": "src/click/_textwrap.py" }, "expected": { "introducedSha": "da0a164", "prNumbers": [] } },
+    { "id": "utils-private-origin", "question": "Why does src/click/_utils.py exist?", "target": { "path": "src/click/_utils.py" }, "expected": { "introducedSha": "b64ea07", "prNumbers": [] } },
+    { "id": "editor-origin", "question": "Why does the Editor class exist?", "target": { "path": "src/click/_termui_impl.py", "symbol": "Editor" }, "expected": { "introducedSha": "721e527", "prNumbers": [] } },
+    { "id": "clirunner-origin", "question": "Why does CliRunner exist?", "target": { "path": "src/click/testing.py", "symbol": "CliRunner" }, "expected": { "introducedSha": "c265355", "prNumbers": [] } },
+    { "id": "context-origin", "question": "Why does the Context class exist?", "target": { "path": "src/click/core.py", "symbol": "Context" }, "expected": { "introducedSha": "4101de3", "prNumbers": [] } },
+    { "id": "get-parameter-source-origin", "question": "Why does Context.get_parameter_source exist?", "target": { "path": "src/click/core.py", "symbol": "Context.get_parameter_source" }, "expected": { "introducedSha": "af24c8d", "prNumbers": [1329] } },
+    { "id": "to-info-dict-origin", "question": "Why does Context.to_info_dict exist?", "target": { "path": "src/click/core.py", "symbol": "Context.to_info_dict" }, "expected": { "introducedSha": "4f38446", "prNumbers": [1623] } },
+    { "id": "fish-complete-origin", "question": "Why does FishComplete exist?", "target": { "path": "src/click/shell_completion.py", "symbol": "FishComplete" }, "expected": { "introducedSha": "3c4cacb", "prNumbers": [1622] } },
+    { "id": "add-completion-class-origin", "question": "Why does add_completion_class exist?", "target": { "path": "src/click/shell_completion.py", "symbol": "add_completion_class" }, "expected": { "introducedSha": "3c4cacb", "prNumbers": [1622] } },
+    { "id": "no-such-command-origin", "question": "Why does the NoSuchCommand exception exist?", "target": { "path": "src/click/exceptions.py", "symbol": "NoSuchCommand" }, "expected": { "introducedSha": "831c8f0", "prNumbers": [3228] } },
+    { "id": "get-pager-file-origin", "question": "Why does get_pager_file exist?", "target": { "path": "src/click/termui.py", "symbol": "get_pager_file" }, "expected": { "introducedSha": "c69643b", "prNumbers": [1572] } },
+    { "id": "sentinel-origin", "question": "Why does the Sentinel enum exist?", "target": { "path": "src/click/_utils.py", "symbol": "Sentinel" }, "expected": { "introducedSha": "b64ea07", "prNumbers": [] } },
+    { "id": "group-origin", "question": "Why does the Group class exist?", "target": { "path": "src/click/core.py", "symbol": "Group" }, "expected": { "introducedSha": "955beb8", "prNumbers": [] } }
+  ]
+}

@@ -10,10 +10,10 @@ interface Question {
   id: string;
   question: string;
   target: WhyTarget;
-  expected: { introducedSha: string; prNumbers: number[]; facts: string[] };
+  expected: { introducedSha: string; prNumbers: number[]; facts?: string[] };
 }
 
-const dataset = JSON.parse(readFileSync(join(import.meta.dirname, "..", "datasets", "history.json"), "utf8")) as { repo: string; questions: Question[] };
+const dataset = JSON.parse(readFileSync(join(import.meta.dirname, "..", "datasets", "click", "history.json"), "utf8")) as { repo: string; questions: Question[] };
 
 const repo = await requireReadyRepo(dataset.repo);
 const models = configureModels();

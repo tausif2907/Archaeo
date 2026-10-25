@@ -19,7 +19,7 @@ interface Bug {
 }
 
 const replay = process.argv.includes("--replay");
-const dataset = JSON.parse(await readFile(join(import.meta.dirname, "..", "datasets", "bugs.json"), "utf8")) as { repo: string; bugs: Bug[] };
+const dataset = JSON.parse(await readFile(join(import.meta.dirname, "..", "datasets", "click", "bugs.json"), "utf8")) as { repo: string; bugs: Bug[] };
 const repo = await requireReadyRepo(dataset.repo);
 const repoDir = repoCloneDir(repo.owner, repo.name);
 const repoName = `${repo.owner}/${repo.name}`;

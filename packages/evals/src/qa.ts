@@ -13,7 +13,7 @@ interface Question {
   expected: { files: string[]; symbols: string[] };
 }
 
-const dataset = JSON.parse(readFileSync(join(import.meta.dirname, "..", "datasets", "qa.json"), "utf8")) as { repo: string; questions: Question[] };
+const dataset = JSON.parse(readFileSync(join(import.meta.dirname, "..", "datasets", "click", "qa.json"), "utf8")) as { repo: string; questions: Question[] };
 
 const repo = await requireReadyRepo(dataset.repo);
 const models = configureModels();
