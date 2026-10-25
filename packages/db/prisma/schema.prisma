@@ -63,6 +63,8 @@ model Repo {
   /// Era generation: pending | running | ready | failed
   erasStatus     String?
   erasMessage    String?
+  /// Sandbox overrides (test command, install steps); detected from the repo when null
+  sandboxConfig  Json?
   /// Free-form counters, e.g. { files, symbols, commits, prs, loc }
   stats          Json?
   createdAt      DateTime   @default(now())
@@ -255,19 +257,39 @@ model AgentRun {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
+  /// For fix runs: the trace run whose report is being fixed
+  parentRunId String?
+
   repo        Repo         @relation(fields: [repoId], references: [id], onDelete: Cascade)
   fixAttempts FixAttempt[]
   modelCalls  ModelCall[]
+
+  @@index([repoId, kind, createdAt])
+  @@index([parentRunId])
 }
 
 model FixAttempt {
-  id         String   @id @default(cuid())
-  runId      String
-  patch      String
-  testOutput String?
-  passed     Boolean  @default(false)
-  prUrl      String?
-  createdAt  DateTime @default(now())
+  id             String    @id @default(cuid())
+  runId          String
+  attempt        Int       @default(1)
+  baseSha        String?
+  patch          String
+  applied        Boolean   @default(false)
+  applyError     String?
+  testOutput     String?
+  testSummary    String?
+  /// Tests failing with the patch that passed at the base commit
+  newFailures    String[]
+  passed         Boolean   @default(false)
+  /// The patch adds or changes tests
+  regressionTest Boolean   @default(false)
+  /// Those tests fail without the fix (null when not checked)
+  reproduced     Boolean?
+  durationMs     Int?
+  approvedAt     DateTime?
+  branch         String?
+  prUrl          String?
+  createdAt      DateTime  @default(now())
 
   run AgentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
 }
