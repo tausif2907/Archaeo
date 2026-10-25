@@ -48,6 +48,8 @@ const MAX_FILES_PER_COMMIT = 300;
 export async function runIngest(repoId: string, deps: IngestDeps): Promise<IngestResult> {
   const { prisma, config, log } = deps;
   const repo = await prisma.repo.findUniqueOrThrow({ where: { id: repoId } });
+  // Cached answers were built from the previous index, which this run may change even at the same HEAD.
+  await prisma.resultCache.deleteMany({ where: { repoId } });
   const warnings: string[] = [];
   const durationsMs: Partial<Record<IngestStage, number>> = {};
 

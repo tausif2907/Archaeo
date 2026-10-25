@@ -5,14 +5,16 @@ import { Redis } from "ioredis";
 import { PrismaCallRecorder, prisma, repoCounts } from "@archaeo/db";
 import { GitHubForkPublisher, loadAgentLimits } from "@archaeo/agent";
 import { createOctokit } from "@archaeo/ingest";
-import { configureModels } from "@archaeo/models";
+import { configureModels, loadModelConfig } from "@archaeo/models";
 import { QUEUES, type ErasJobData, type FixJobData, type IngestJobData } from "@archaeo/shared";
 import { buildApp } from "./app";
+import { createResultCache, modelCacheKey } from "./cache";
 import { createHistoryService } from "./history";
 import { createFutureService } from "./future";
 import { createPresentService } from "./present";
 
 const models = configureModels({ recorder: new PrismaCallRecorder() });
+const cache = createResultCache(prisma, modelCacheKey(loadModelConfig()));
 
 const redis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
 const ingestQueue = new Queue<IngestJobData>(QUEUES.ingest, { connection: redis });
@@ -39,8 +41,8 @@ const app = await buildApp({
   },
   history: createHistoryService(prisma, models, async (repoId) => {
     await erasQueue.add("eras", { repoId, force: true }, jobOpts);
-  }),
-  present: createPresentService(prisma, models, limits),
+  }, cache),
+  present: createPresentService(prisma, models, limits, cache),
   future: createFutureService(prisma, models, {
     limits,
     enqueueFix: async (runId) => {
@@ -50,6 +52,7 @@ const app = await buildApp({
     publishTarget,
     sandboxProvider: process.env.SANDBOX_PROVIDER || "docker",
     octokit: createOctokit(githubToken),
+    cache,
   }),
   enqueueIngest: async (repoId) => {
     await ingestQueue.add("ingest", { repoId }, jobOpts);

@@ -2,9 +2,10 @@ import type { Octokit } from "@octokit/rest";
 import { approveFixAttempt, traceBug, type AgentLimits, type Publisher } from "@archaeo/agent";
 import type { AgentRun, FixAttempt, Prisma, PrismaClient } from "@archaeo/db";
 import type { Models } from "@archaeo/models";
-import type { AppConfigDto, BugReport, FixAttemptDto, FixRunDto, TestRunSummary, TraceInput, TraceRunDto } from "@archaeo/shared";
+import type { AppConfigDto, BugReport, FixAttemptDto, FixRunDto, TestRunSummary, TraceEvent, TraceInput, TraceRunDto } from "@archaeo/shared";
 import { repoCloneDir } from "@archaeo/shared/env";
 import { FutureError, type FutureService } from "./app";
+import type { ResultCache } from "./cache";
 
 const OUTPUT_TAIL = 4000;
 
@@ -64,6 +65,7 @@ export interface FutureOptions {
   publishTarget: "fork" | "upstream";
   sandboxProvider: string;
   octokit?: Octokit;
+  cache: ResultCache;
 }
 
 /** Prisma-backed FutureService: bug tracing, fix runs, and approval-gated publishing. */
@@ -77,18 +79,32 @@ export function createFutureService(prisma: PrismaClient, models: Pick<Models, "
     },
 
     async trace(repo, input, onEvent, signal) {
+      // A repeat report reopens the original case file (and any fix run on it) instead of tracing again.
+      const cached = await opts.cache.get<{ runId: string; events: TraceEvent[]; report: BugReport }>(repo, "trace", input);
+      if (cached && (await prisma.agentRun.count({ where: { id: cached.runId, repoId: repo.id } }))) {
+        onEvent({ type: "run", runId: cached.runId });
+        for (const e of cached.events) onEvent(e);
+        return { runId: cached.runId, report: cached.report };
+      }
+
       const run = await prisma.agentRun.create({ data: { repoId: repo.id, kind: "trace", input: input as Prisma.InputJsonValue } });
       onEvent({ type: "run", runId: run.id });
+      const events: TraceEvent[] = [];
+      const record = (e: TraceEvent) => {
+        events.push(e);
+        onEvent(e);
+      };
       try {
         const report = await traceBug(
           { prisma, models, repoId: repo.id, repoDir: repoCloneDir(repo.owner, repo.name), repoName: `${repo.owner}/${repo.name}`, octokit: opts.octokit },
           input,
-          { limits: opts.limits, onEvent, runId: run.id, signal },
+          { limits: opts.limits, onEvent: record, runId: run.id, signal },
         );
         await prisma.agentRun.update({
           where: { id: run.id },
           data: { status: "succeeded", output: { report } as unknown as Prisma.InputJsonValue, toolCalls: report.toolCalls as unknown as Prisma.InputJsonValue, costEstimate: report.costUsd },
         });
+        if (!report.fallback) await opts.cache.set(repo, "trace", input, { runId: run.id, events, report });
         return { runId: run.id, report };
       } catch (err) {
         await prisma.agentRun.update({ where: { id: run.id }, data: { status: "failed", output: { error: err instanceof Error ? err.message : String(err) } } });

@@ -4,13 +4,15 @@ import type { Models } from "@archaeo/models";
 import type { EraDto, EraStats, WhyResult } from "@archaeo/shared";
 import { repoCloneDir } from "@archaeo/shared/env";
 import type { HistoryService } from "./app";
+import type { ResultCache } from "./cache";
 
-const WHY_CACHE_SIZE = 200;
-
-/** Prisma + git backed HistoryService. Why answers are cached per repo HEAD. */
-export function createHistoryService(prisma: PrismaClient, models: Pick<Models, "reason">, enqueueEras: (repoId: string) => Promise<void>): HistoryService {
-  const whyCache = new Map<string, WhyResult>();
-
+/** Prisma + git backed HistoryService. Why answers are cached per repo HEAD and model. */
+export function createHistoryService(
+  prisma: PrismaClient,
+  models: Pick<Models, "reason">,
+  enqueueEras: (repoId: string) => Promise<void>,
+  cache: ResultCache,
+): HistoryService {
   return {
     async eras(repoId) {
       const repo = await prisma.repo.findUniqueOrThrow({ where: { id: repoId }, select: { erasStatus: true, erasMessage: true } });
@@ -61,12 +63,11 @@ export function createHistoryService(prisma: PrismaClient, models: Pick<Models, 
     },
 
     async why(repo, input) {
-      const key = `${repo.id}:${repo.headSha}:${JSON.stringify(input)}`;
-      const hit = whyCache.get(key);
+      const hit = await cache.get<WhyResult>(repo, "why", input);
       if (hit) return hit;
       const result = await explainWhy({ prisma, models, repoId: repo.id, repoDir: repoCloneDir(repo.owner, repo.name) }, input);
-      whyCache.set(key, result);
-      if (whyCache.size > WHY_CACHE_SIZE) whyCache.delete(whyCache.keys().next().value!);
+      // A fallback answer means the model failed; try again next time.
+      if (!result.fallback) await cache.set(repo, "why", input, result);
       return result;
     },
   };

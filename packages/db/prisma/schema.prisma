@@ -79,6 +79,7 @@ model Repo {
   modules      Module[]
   chunks       Chunk[]
   agentRuns    AgentRun[]
+  resultCache  ResultCache[]
 }
 
 model File {
@@ -308,4 +309,19 @@ model ModelCall {
   run AgentRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
 
   @@index([task])
+}
+
+/// Finished agent results (why, flow, ask, trace) so repeat requests are instant, also after a restart.
+/// The key hashes the repo HEAD, the model routes and the normalized input, so a new commit or model misses.
+model ResultCache {
+  id        String   @id @default(cuid())
+  repoId    String
+  kind      String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@unique([repoId, kind, key])
 }

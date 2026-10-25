@@ -3,17 +3,15 @@ import { posix } from "node:path";
 import { answerQuestion, safeRepoPath, traceFlow, type AgentLimits } from "@archaeo/agent";
 import type { Prisma, PrismaClient } from "@archaeo/db";
 import type { Models } from "@archaeo/models";
-import type { FlowTrace } from "@archaeo/shared";
+import type { AgentEvent, AskResult, FlowTrace } from "@archaeo/shared";
 import { repoCloneDir } from "@archaeo/shared/env";
 import type { PresentService } from "./app";
+import type { ResultCache } from "./cache";
 
 const MAX_VIEW_LINES = 5000;
-const FLOW_CACHE_SIZE = 100;
 
-/** Prisma + git backed PresentService. */
-export function createPresentService(prisma: PrismaClient, models: Pick<Models, "reason" | "embed">, limits: AgentLimits): PresentService {
-  const flowCache = new Map<string, FlowTrace>();
-
+/** Prisma + git backed PresentService. Flow traces and answers are cached per repo HEAD and model. */
+export function createPresentService(prisma: PrismaClient, models: Pick<Models, "reason" | "embed">, limits: AgentLimits, cache: ResultCache): PresentService {
   return {
     async map(repoId) {
       const [modules, files, edges] = await Promise.all([
@@ -64,13 +62,26 @@ export function createPresentService(prisma: PrismaClient, models: Pick<Models, 
     },
 
     async ask(repo, question, onEvent, signal) {
+      // A repeat question replays the original run: same run id, tool steps and answer, without model calls.
+      const cached = await cache.get<{ runId: string; events: AgentEvent[]; result: AskResult }>(repo, "ask", { question });
+      if (cached) {
+        onEvent({ type: "run", runId: cached.runId });
+        for (const e of cached.events) onEvent(e);
+        return cached.result;
+      }
+
       const run = await prisma.agentRun.create({ data: { repoId: repo.id, kind: "chat", input: { question } } });
       onEvent({ type: "run", runId: run.id });
+      const events: AgentEvent[] = [];
+      const record = (e: AgentEvent) => {
+        events.push(e);
+        onEvent(e);
+      };
       try {
         const result = await answerQuestion(
           { prisma, models, repoId: repo.id, repoDir: repoCloneDir(repo.owner, repo.name), repoName: `${repo.owner}/${repo.name}` },
           question,
-          { limits, onEvent, runId: run.id, signal },
+          { limits, onEvent: record, runId: run.id, signal },
         );
         await prisma.agentRun.update({
           where: { id: run.id },
@@ -81,6 +92,7 @@ export function createPresentService(prisma: PrismaClient, models: Pick<Models, 
             costEstimate: result.costUsd,
           },
         });
+        if (result.status === "succeeded" && !result.fallback) await cache.set(repo, "ask", { question }, { runId: run.id, events, result });
         return result;
       } catch (err) {
         await prisma.agentRun.update({ where: { id: run.id }, data: { status: "failed", output: { error: err instanceof Error ? err.message : String(err) } } });
@@ -89,12 +101,10 @@ export function createPresentService(prisma: PrismaClient, models: Pick<Models, 
     },
 
     async flow(repo, input) {
-      const key = `${repo.id}:${repo.headSha}:${input.symbol}:${input.path ?? ""}`;
-      const hit = flowCache.get(key);
+      const hit = await cache.get<FlowTrace>(repo, "flow", input);
       if (hit) return hit;
       const trace = await traceFlow({ prisma, models, repoId: repo.id, repoDir: repoCloneDir(repo.owner, repo.name) }, input);
-      flowCache.set(key, trace);
-      if (flowCache.size > FLOW_CACHE_SIZE) flowCache.delete(flowCache.keys().next().value!);
+      if (!trace.fallback) await cache.set(repo, "flow", input, trace);
       return trace;
     },
   };
