@@ -95,7 +95,13 @@ export const QUEUES = {
   ingest: "ingest",
   summarize: "summarize",
   eras: "eras",
+  /** Sandboxed patch attempts for a traced bug */
+  fix: "fix",
 } as const;
+
+export interface FixJobData {
+  runId: string;
+}
 
 export interface ErasJobData {
   repoId: string;
@@ -268,6 +274,124 @@ export interface SymbolHit {
   kind: string;
   path: string;
   startLine: number;
+}
+
+// ---------------------------------------------------------------- The Future
+
+export const TraceInput = z
+  .object({
+    text: z.string().max(20_000).default(""),
+    issueUrl: z.string().max(500).optional(),
+  })
+  .refine((v) => v.text.trim().length >= 10 || !!v.issueUrl, { message: "Paste an error or describe the bug (10+ characters), or give an issue URL" });
+export type TraceInput = z.infer<typeof TraceInput>;
+
+export interface StackFrame {
+  /** Path as printed in the trace */
+  rawPath: string;
+  /** Matching repo file, or null when the frame is outside the repo (stdlib, site-packages, …) */
+  path: string | null;
+  line: number;
+  func: string | null;
+}
+
+export interface Suspect extends CodeRef {
+  symbol: string | null;
+  score: number;
+  reasons: string[];
+}
+
+export interface BugReport {
+  issue: { number: number; title: string; url: string } | null;
+  /** Bug text the trace worked from (pasted text plus issue title/body/comments) */
+  description: string;
+  exception: string | null;
+  frames: StackFrame[];
+  suspects: Suspect[];
+  hypothesis: string;
+  confidence: "low" | "medium" | "high";
+  evidence: { ref: CodeRef; why: string }[];
+  filesToChange: string[];
+  /** Report assembled from the suspect ranking because model output was unusable */
+  fallback: boolean;
+  toolCalls: { name: string; summary: string; ms: number }[];
+  costUsd: number;
+}
+
+export interface SandboxConfig {
+  language: "python" | "node";
+  baseImage: string;
+  /** apt packages added to the base image */
+  systemPackages: string[];
+  /** Dockerfile RUN steps that install test dependencies (network allowed at build time only) */
+  install: string[];
+  /** Repo files copied into the image build (dependency manifests, lock files) */
+  depsFiles: string[];
+  /** Full test suite, run offline in the repo root */
+  test: string;
+  /** Run specific test files; `{files}` is replaced with space-separated paths */
+  testFiles: string;
+  env: Record<string, string>;
+  timeoutSeconds: number;
+}
+
+export interface TestRunSummary {
+  exitCode: number;
+  timedOut: boolean;
+  /** Failing test ids, or null when the output format isn't recognised */
+  failures: string[] | null;
+  summary: string;
+  durationMs: number;
+}
+
+export interface FixAttemptDto {
+  id: string;
+  attempt: number;
+  patch: string;
+  applied: boolean;
+  applyError: string | null;
+  passed: boolean;
+  testSummary: string | null;
+  testOutputTail: string | null;
+  newFailures: string[];
+  regressionTest: boolean;
+  reproduced: boolean | null;
+  durationMs: number | null;
+  approvedAt: string | null;
+  branch: string | null;
+  prUrl: string | null;
+}
+
+export interface FixRunDto {
+  id: string;
+  traceRunId: string | null;
+  status: "running" | "succeeded" | "failed" | "limited";
+  phase: string | null;
+  baseSha: string | null;
+  baseline: TestRunSummary | null;
+  attempts: FixAttemptDto[];
+  /** The passing attempt offered for approval, if any */
+  offeredAttemptId: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+export interface TraceRunDto {
+  id: string;
+  status: "running" | "succeeded" | "failed" | "limited";
+  input: TraceInput;
+  report: BugReport | null;
+  error: string | null;
+  createdAt: string;
+  /** Latest fix run for this case */
+  fixRunId: string | null;
+}
+
+export type TraceEvent = Exclude<AgentEvent, { type: "answer" }> | { type: "report"; report: BugReport };
+
+export interface AppConfigDto {
+  publishing: { enabled: boolean; target: "fork" | "upstream" };
+  sandbox: { provider: string };
 }
 
 export interface FileEntry {
