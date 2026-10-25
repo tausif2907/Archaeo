@@ -35,7 +35,8 @@ const app = await buildApp({
     findByUrl: (url) => prisma.repo.findUnique({ where: { url } }),
     findById: (id) => prisma.repo.findUnique({ where: { id } }),
     create: (data) => prisma.repo.create({ data }),
-    list: () => prisma.repo.findMany({ orderBy: { createdAt: "desc" }, take: 50 }),
+    // Eval snapshots (a repo indexed at a historical commit, url ending "#eval@<sha>") are temporary.
+    list: () => prisma.repo.findMany({ where: { NOT: { url: { contains: "#eval@" } } }, orderBy: { createdAt: "desc" }, take: 50 }),
     markQueued: (id) => prisma.repo.update({ where: { id }, data: { status: "queued", stage: null, statusMessage: null } }),
     counts: (id) => repoCounts(prisma, id),
   },

@@ -12,11 +12,13 @@
     "history": "tsx src/history.ts",
     "check:citations": "tsx src/check-citations.ts",
     "qa": "tsx src/qa.ts",
-    "bugs": "tsx src/bugs.ts"
+    "bugs": "tsx src/bugs.ts",
+    "eval": "tsx src/run.ts"
   },
   "dependencies": {
     "@archaeo/agent": "workspace:*",
     "@archaeo/db": "workspace:*",
+    "@archaeo/ingest": "workspace:*",
     "@archaeo/models": "workspace:*",
     "@archaeo/sandbox": "workspace:*",
     "@archaeo/shared": "workspace:*"

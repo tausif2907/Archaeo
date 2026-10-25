@@ -16,6 +16,7 @@
     "db:migrate": "pnpm --filter @archaeo/db migrate:dev",
     "db:deploy": "pnpm --filter @archaeo/db migrate:deploy",
     "postinstall": "pnpm --filter @archaeo/db generate",
+    "eval": "pnpm --filter @archaeo/evals eval",
     "eval:history": "pnpm --filter @archaeo/evals history",
     "check:citations": "pnpm --filter @archaeo/evals check:citations",
     "eval:qa": "pnpm --filter @archaeo/evals qa",

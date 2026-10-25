@@ -1,26 +1,18 @@
-import { readFile, stat } from "node:fs/promises";
-import { join } from "node:path";
-import { approvalProblem, approveFixAttempt, loadAgentLimits, runFixLoop, safeRepoPath, traceBug, type FixEnvironment, type Publisher, type PublishInput } from "@archaeo/agent";
+import { approvalProblem, approveFixAttempt, loadAgentLimits, runFixLoop, traceBug, type Publisher, type PublishInput } from "@archaeo/agent";
 import { prisma, type Prisma } from "@archaeo/db";
 import { configureModels, createModels, loadModelConfig, MockProvider, type Models } from "@archaeo/models";
 import { createSandboxProvider, detectSandboxConfig, exec } from "@archaeo/sandbox";
 import type { BugReport } from "@archaeo/shared";
 import { repoCloneDir } from "@archaeo/shared/env";
+import { flag, loadDataset, sandboxEnv } from "./common";
 import { requireReadyRepo } from "./repo";
-
-interface Bug {
-  id: string;
-  title: string;
-  report: string;
-  preFixSha: string;
-  fixSha: string;
-  fixFiles: string[];
-  /** Replay only: a wrong patch tried before the real fix, to exercise retry */
-  replayWrongPatch?: string;
-}
+import { withSnapshot } from "./snapshot";
+import type { Bug } from "./suites";
 
 const replay = process.argv.includes("--replay");
-const dataset = JSON.parse(await readFile(join(import.meta.dirname, "..", "datasets", "click", "bugs.json"), "utf8")) as { repo: string; bugs: Bug[] };
+/** `pnpm eval:bugs [--repo click] [--replay]`: --replay checks the fix pipeline with the real fix; `pnpm eval` measures. */
+const dataset = await loadDataset<{ bugs: Bug[] }>(flag("repo", "click")!, "bugs");
+if (!dataset) throw new Error("No bug dataset for that repo");
 const repo = await requireReadyRepo(dataset.repo);
 const repoDir = repoCloneDir(repo.owner, repo.name);
 const repoName = `${repo.owner}/${repo.name}`;
@@ -43,11 +35,9 @@ let failed = false;
 for (const bug of dataset.bugs) {
   console.log(`\n== ${bug.id}: ${bug.title}`);
 
-  // 1. Trace from the symptom-only report.
-  const report: BugReport = await traceBug(
-    { prisma, models, repoId: repo.id, repoDir, repoName },
-    { text: bug.report },
-    { limits: loadAgentLimits() },
+  // 1. Trace from the symptom-only report, against an index of the pre-fix commit.
+  const report: BugReport = await withSnapshot({ prisma, models }, repo, repoDir, bug.preFixSha, (snap) =>
+    traceBug({ prisma, models, repoId: snap.repoId, repoDir: snap.dir, repoName }, { text: bug.report }, { limits: loadAgentLimits() }),
   );
   const files = report.suspects.map((s) => s.path);
   const rank = files.findIndex((f) => bug.fixFiles.includes(f));
@@ -58,19 +48,7 @@ for (const bug of dataset.bugs) {
   // 2. Fix at the pre-fix commit in the sandbox.
   const detected = (await detectSandboxConfig(repoDir, bug.preFixSha))!;
   const session = await sandbox.prepare({ repoDir, sha: bug.preFixSha, repoName, ...detected }, (p) => console.log(`  ${p}`));
-  const env: FixEnvironment = {
-    runTests: (f) => session.runTests(f),
-    applyPatch: (d) => session.applyPatch(d),
-    reset: () => session.reset(),
-    readFile: async (p) => {
-      const full = safeRepoPath(session.dir, p);
-      return full ? await readFile(full, "utf8").catch(() => null) : null;
-    },
-    exists: async (p) => {
-      const full = safeRepoPath(session.dir, p);
-      return full ? (await stat(full).catch(() => null))?.isFile() === true : false;
-    },
-  };
+  const env = sandboxEnv(session);
 
   let fixModels: Pick<Models, "writeCode"> = models;
   if (replay) {
