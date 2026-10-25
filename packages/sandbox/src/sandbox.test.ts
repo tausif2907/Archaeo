@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dependencyGroups, testGroups } from "./detect";
-import { DockerSandbox, dockerfile, imageTag, SandboxUnavailableError } from "./docker";
+import { DockerSandbox, dockerfile, imageTag, SandboxUnavailableError, staleImageTags } from "./docker";
 import { extractDiff, filesInDiff, isTestPath, splitDiff, testOnlyDiff } from "./patch";
 import { compareToBaseline, parsePytest } from "./results";
 
@@ -71,6 +71,12 @@ describe("docker availability", () => {
     const sandbox = new DockerSandbox({ docker: "docker-binary-that-does-not-exist" });
     await expect(sandbox.checkAvailable()).rejects.toBeInstanceOf(SandboxUnavailableError);
     await expect(sandbox.checkAvailable()).rejects.toThrow(/Docker is not available .*Start Docker Desktop/);
+  });
+
+  it("keeps only the newest sandbox images per repo", () => {
+    expect(staleImageTags(["e", "d", "c", "b", "a"], 3, "e")).toEqual(["b", "a"]);
+    expect(staleImageTags(["d", "c", "b", "a"], 3, "b")).toEqual(["a"]);
+    expect(staleImageTags(["b", "a"], 3, "b")).toEqual([]);
   });
 });
 

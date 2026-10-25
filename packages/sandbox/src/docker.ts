@@ -55,6 +55,11 @@ export function imageTag(repoName: string, config: SandboxConfig, files: Record<
   return `archaeo-sbx-${slug}:${key}`;
 }
 
+/** Tags to delete for one repo, given its image tags newest first: everything past the newest `keep`, never the one in use. */
+export function staleImageTags(tagsNewestFirst: string[], keep: number, current: string): string[] {
+  return tagsNewestFirst.filter((t) => t !== current).slice(Math.max(keep - 1, 0));
+}
+
 export function dockerfile(config: SandboxConfig): string {
   const lines = [`FROM ${config.baseImage}`];
   if (config.systemPackages.length) {
@@ -74,7 +79,7 @@ export class DockerSandbox implements SandboxProvider {
   readonly name = "docker";
 
   constructor(
-    private readonly opts: { docker?: string; memory?: string; cpus?: string; pids?: number; buildTimeoutMs?: number } = {},
+    private readonly opts: { docker?: string; memory?: string; cpus?: string; pids?: number; buildTimeoutMs?: number; keepImages?: number } = {},
   ) {}
 
   private get docker() {
@@ -106,9 +111,24 @@ export class DockerSandbox implements SandboxProvider {
       await writeFile(join(ctx, "Dockerfile"), dockerfile(input.config));
       const r = await exec(this.docker, ["build", "-t", tag, ctx], { timeoutMs: this.opts.buildTimeoutMs ?? 20 * 60_000 });
       if (r.exitCode !== 0) throw new Error(`Sandbox image build failed:\n${r.output.slice(-4000)}`);
+      await this.pruneImages(tag);
       return tag;
     } finally {
       await rm(ctx, { recursive: true, force: true });
+    }
+  }
+
+  /**
+   * Historical commits often have different dependency sets, so each gets its own ~600 MB image.
+   * Keeps the newest few per repo; an image still used by a running container just fails to delete.
+   */
+  private async pruneImages(tag: string): Promise<void> {
+    const repo = tag.slice(0, tag.lastIndexOf(":"));
+    const ls = await exec(this.docker, ["image", "ls", repo, "--format", "{{.Tag}}"]);
+    if (ls.exitCode !== 0) return;
+    const tags = ls.output.split("\n").map((t) => t.trim()).filter((t) => t && t !== "<none>");
+    for (const old of staleImageTags(tags, this.opts.keepImages ?? 3, tag.slice(repo.length + 1))) {
+      await exec(this.docker, ["image", "rm", `${repo}:${old}`]);
     }
   }
 
