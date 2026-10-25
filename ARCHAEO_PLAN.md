@@ -204,19 +204,19 @@ Each call records model, tokens in/out, latency, and estimated cost to a `ModelC
 
 ## 10. Phase 5 — Evals and hardening (Day 9)
 
-- [ ] `packages/evals` datasets (JSON):
+- [x] `packages/evals` datasets (JSON):
   - `history.json`: ~20 questions with expected facts and SHAs
   - `qa.json`: ~20 code questions with expected files
   - `bugs.json`: 5–10 historical bugs: pre-fix SHA, issue text, files changed in the real fix, test command
-- [ ] Runner: `pnpm eval` writes a Markdown report with:
+- [x] Runner: `pnpm eval` writes a Markdown report with:
   - history answer accuracy and citation validity
   - Q&A answer accuracy and file recall
   - bug tracing: real fix file in top-1 and top-3
   - fixer: pass rate, average attempts
   - average cost and latency per run type
-- [ ] Run on one backup repo in a second language to check generalization
-- [ ] Fix the top failure modes; add caching for every demo path
-- [ ] Error states in the UI for every failure (ingest fails, model timeout, sandbox fails)
+- [x] Run on one backup repo in a second language to check generalization
+- [x] Fix the top failure modes; add caching for every demo path
+- [x] Error states in the UI for every failure (ingest fails, model timeout, sandbox fails)
 
 **Acceptance**
 - `pnpm eval` runs end to end and produces `evals/REPORT.md` with real numbers
@@ -325,3 +325,11 @@ _Record decisions here as they are made (date, decision, reason)._
   - `pnpm eval:bugs --replay` (a scripted model, a pipeline check rather than a model eval) runs a wrong patch first: 27 tests fail and it is refused. The real fix then gives 1,658 passing tests, and its regression tests fail without it. Approving the failing attempt is refused; the publisher has 0 calls before approval and exactly 1 after; the PR text has no attribution; re-approval is refused.
   - The Playwright test runs the Fix tab end to end in the real sandbox and confirms no Approve button appears for failing patches.
   - **Not yet done:** a PR on a real fork (needs a token) and a model-written passing patch (needs the live model). Historical-bug tracing currently uses the HEAD index, which already contains the fix; Phase 5 should index the pre-fix commit.
+- **2026-10-25 — Phase 5 evals.** `pnpm eval` runs the history, Q&A and bug suites for every repo folder in `packages/evals/datasets/` and writes `evals/REPORT.md` (`--repo`, `--suite` and `--no-fix` narrow a run).
+  - Each historical bug is traced against a temporary index of its pre-fix commit: a repo row whose URL ends in `#eval@<sha>`, hidden from the repo list and deleted afterwards. Tracing no longer sees the fix and ranks the real fix file first for 5 of 7 bugs; the HEAD index flattered it.
+  - Datasets: click has 20 history questions, 20 Q&A questions and 7 sandbox-verified bugs. Left out: b7e5fd4 (fish completion), whose tests pin an internal output format no symptom report can specify, and f58ca3e, whose tests pass before the fix. got (TypeScript) has 12 history and 15 Q&A questions and no bug set yet.
+  - Mock-mode results: history 20/20 (click) and 12/12 (got); Q&A 17/20 and 10/15; fixer 0/7, because the mock model writes no patch. Model numbers wait for API keys (`MODEL_PROVIDER=live`).
+  - Mock embeddings are a bag-of-words hash, so vector search adds lexical noise (a large `types.ts` chunk resembles every question). The got Q&A misses were not tuned against it.
+  - Fixed from eval failures. Code search keeps the 12 rarest of up to 30 terms (long bug reports used to stop at their first 12 words) and ignores `foo`/`bar`/`baz` placeholders (the demo trace ranked `progressbar` first). "Why does this exist?" reads up to 1,000 line-history commits (was 100), and a symbol's history starts at the commit that first added its definition line when that line is unique in the file: `git log -L` carried `NoSuchCommand` back to an unrelated 2014 class.
+  - Dataset correction: `Group` is in click's initial commit (4101de3), not 955beb8.
+- **2026-10-25 — Caching for demo paths.** Finished why, flow, ask and trace results live in a `ResultCache` table, keyed by repo, kind and a hash of HEAD, the reasoning and embedding model routes, and the whitespace-normalized input. A new commit, a model change or a re-ingest misses. Fallback results are not cached. A repeat ask or trace replays the original run (same run id and events), so its case file and Fix button keep working. After an API restart, every demo path answered three times in a row, each within about 3.7 s.
