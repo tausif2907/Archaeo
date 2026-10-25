@@ -1,0 +1,200 @@
+{
+  "repo": "https://github.com/sindresorhus/got",
+  "notes": "Second-language (TypeScript) check. Expected locations were found by reading got source (grep for the functions and classes), not with Archaeo; symbol names match how the index qualifies them. A question passes when a citation of at most 300 lines overlaps one of the expected symbols and every citation is valid.",
+  "questions": [
+    {
+      "id": "retry-delay",
+      "question": "How does got decide how long to wait before retrying a failed request?",
+      "expected": {
+        "files": [
+          "source/core/calculate-retry-delay.ts"
+        ],
+        "symbols": [
+          "calculateRetryDelay"
+        ]
+      }
+    },
+    {
+      "id": "link-header",
+      "question": "Where does got parse the Link header used for pagination?",
+      "expected": {
+        "files": [
+          "source/core/parse-link-header.ts"
+        ],
+        "symbols": [
+          "parseLinkHeader"
+        ]
+      }
+    },
+    {
+      "id": "dns-cache",
+      "question": "How does got cache DNS lookups?",
+      "expected": {
+        "files": [
+          "source/core/utils/dns-cache.ts"
+        ],
+        "symbols": [
+          "DnsCache",
+          "DnsCache.lookupAsync"
+        ]
+      }
+    },
+    {
+      "id": "timeouts",
+      "question": "Where are request timeouts like the socket or response timeout enforced?",
+      "expected": {
+        "files": [
+          "source/core/timed-out.ts",
+          "source/core/index.ts"
+        ],
+        "symbols": [
+          "timedOut.addTimeout",
+          "timedOut.timeoutHandler",
+          "Request._checkRequestTimeout"
+        ]
+      }
+    },
+    {
+      "id": "decompress",
+      "question": "How does got decompress gzip, brotli or zstd response bodies?",
+      "expected": {
+        "files": [
+          "source/core/utils/decompress-response.ts"
+        ],
+        "symbols": [
+          "decompressResponseBody"
+        ]
+      }
+    },
+    {
+      "id": "extend",
+      "question": "How are got instances created and extended with got.extend()?",
+      "expected": {
+        "files": [
+          "source/create.ts"
+        ],
+        "symbols": [
+          "create"
+        ]
+      }
+    },
+    {
+      "id": "promise-api",
+      "question": "How does the promise API wrap the underlying request stream?",
+      "expected": {
+        "files": [
+          "source/as-promise/index.ts"
+        ],
+        "symbols": [
+          "asPromise",
+          "asPromise.makeRequest"
+        ]
+      }
+    },
+    {
+      "id": "redirects",
+      "question": "Where does got decide to follow an HTTP redirect?",
+      "expected": {
+        "files": [
+          "source/core/index.ts"
+        ],
+        "symbols": [
+          "Request._onResponseBase"
+        ]
+      }
+    },
+    {
+      "id": "errors",
+      "question": "Where are error classes like HTTPError and TimeoutError defined?",
+      "expected": {
+        "files": [
+          "source/core/errors.ts"
+        ],
+        "symbols": [
+          "RequestError",
+          "HTTPError",
+          "TimeoutError"
+        ]
+      }
+    },
+    {
+      "id": "merge-options",
+      "question": "How does got merge options from an instance and a request?",
+      "expected": {
+        "files": [
+          "source/core/options.ts"
+        ],
+        "symbols": [
+          "Options.merge"
+        ]
+      }
+    },
+    {
+      "id": "http2",
+      "question": "How does got make HTTP/2 requests?",
+      "expected": {
+        "files": [
+          "source/core/utils/http2-client.ts"
+        ],
+        "symbols": [
+          "Http2Agent",
+          "Http2ClientRequest",
+          "requestHttp2"
+        ]
+      }
+    },
+    {
+      "id": "progress",
+      "question": "How does got report download and upload progress?",
+      "expected": {
+        "files": [
+          "source/core/index.ts"
+        ],
+        "symbols": [
+          "Request.downloadProgress",
+          "Request.uploadProgress",
+          "makeProgress"
+        ]
+      }
+    },
+    {
+      "id": "diagnostics",
+      "question": "How does got publish diagnostics channel events?",
+      "expected": {
+        "files": [
+          "source/core/diagnostics-channel.ts"
+        ],
+        "symbols": [
+          "publishRequestCreate",
+          "publishResponseStart",
+          "publishRetry"
+        ]
+      }
+    },
+    {
+      "id": "http-cache",
+      "question": "Where does got set up HTTP response caching?",
+      "expected": {
+        "files": [
+          "source/core/index.ts"
+        ],
+        "symbols": [
+          "Request._prepareCache",
+          "Request._createCacheableRequest"
+        ]
+      }
+    },
+    {
+      "id": "cookies",
+      "question": "Where does got build the Cookie header from a cookie jar?",
+      "expected": {
+        "files": [
+          "source/core/index.ts"
+        ],
+        "symbols": [
+          "Request._makeRequest.getCookieHeader"
+        ]
+      }
+    }
+  ]
+}

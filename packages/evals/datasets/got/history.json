@@ -1,0 +1,156 @@
+{
+  "repo": "https://github.com/sindresorhus/got",
+  "notes": "Second-language (TypeScript) check. Ground truth from git, not from Archaeo: `git log --follow --diff-filter=A` for each file. PR numbers only where the introducing commit is a squash merge whose subject ends in `(#N)`; all of them are in the ingested PR table. A question passes when the answer names the introducing commit and PR and cites them, and every citation exists.",
+  "questions": [
+    {
+      "id": "retry-delay-origin",
+      "question": "Why does source/core/calculate-retry-delay.ts exist?",
+      "target": {
+        "path": "source/core/calculate-retry-delay.ts"
+      },
+      "expected": {
+        "introducedSha": "b15ce1dc16d04133dab74c6953d86fa1015ef673",
+        "prNumbers": [
+          830
+        ]
+      }
+    },
+    {
+      "id": "link-header-origin",
+      "question": "Why does source/core/parse-link-header.ts exist?",
+      "target": {
+        "path": "source/core/parse-link-header.ts"
+      },
+      "expected": {
+        "introducedSha": "3c23eea5a096f6f8ea0edf3e2a27e1caca88acf9",
+        "prNumbers": [
+          1667
+        ]
+      }
+    },
+    {
+      "id": "dns-cache-origin",
+      "question": "Why does source/core/utils/dns-cache.ts exist?",
+      "target": {
+        "path": "source/core/utils/dns-cache.ts"
+      },
+      "expected": {
+        "introducedSha": "bfc400b2a12a0bbb4d0ed896d61d834cd5f2ebcb",
+        "prNumbers": [
+          2463
+        ]
+      }
+    },
+    {
+      "id": "http2-client-origin",
+      "question": "Why does source/core/utils/http2-client.ts exist?",
+      "target": {
+        "path": "source/core/utils/http2-client.ts"
+      },
+      "expected": {
+        "introducedSha": "1e157c43c4395912d66154993875a2a6fb3dbb6e",
+        "prNumbers": [
+          2464
+        ]
+      }
+    },
+    {
+      "id": "diagnostics-channel-origin",
+      "question": "Why does source/core/diagnostics-channel.ts exist?",
+      "target": {
+        "path": "source/core/diagnostics-channel.ts"
+      },
+      "expected": {
+        "introducedSha": "3e2a781c8e4f4163ec8dadf4a834b996516dd667",
+        "prNumbers": []
+      }
+    },
+    {
+      "id": "timed-out-origin",
+      "question": "Why does source/core/timed-out.ts exist?",
+      "target": {
+        "path": "source/core/timed-out.ts"
+      },
+      "expected": {
+        "introducedSha": "be0f17f7f6427472ec8e4aceec13fc88b707f96e",
+        "prNumbers": [
+          501
+        ]
+      }
+    },
+    {
+      "id": "decompress-origin",
+      "question": "Why does source/core/utils/decompress-response.ts exist?",
+      "target": {
+        "path": "source/core/utils/decompress-response.ts"
+      },
+      "expected": {
+        "introducedSha": "b9b6b1e9d72c7e597cf377fe4941bc4c5c952c02",
+        "prNumbers": [
+          1248
+        ]
+      }
+    },
+    {
+      "id": "strip-url-auth-origin",
+      "question": "Why does source/core/utils/strip-url-auth.ts exist?",
+      "target": {
+        "path": "source/core/utils/strip-url-auth.ts"
+      },
+      "expected": {
+        "introducedSha": "8e392f32c59f649be55b616a5a90aa27cd0d01f0",
+        "prNumbers": []
+      }
+    },
+    {
+      "id": "unix-socket-origin",
+      "question": "Why does source/core/utils/is-unix-socket-url.ts exist?",
+      "target": {
+        "path": "source/core/utils/is-unix-socket-url.ts"
+      },
+      "expected": {
+        "introducedSha": "861ccd9ac2237df762a9e2beed7edd88c60782dc",
+        "prNumbers": [
+          2047
+        ]
+      }
+    },
+    {
+      "id": "weakable-map-origin",
+      "question": "Why does source/core/utils/weakable-map.ts exist?",
+      "target": {
+        "path": "source/core/utils/weakable-map.ts"
+      },
+      "expected": {
+        "introducedSha": "2abacfffef9e84afd111827bb7848815e28b0cbf",
+        "prNumbers": []
+      }
+    },
+    {
+      "id": "create-origin",
+      "question": "Why does source/create.ts exist?",
+      "target": {
+        "path": "source/create.ts"
+      },
+      "expected": {
+        "introducedSha": "b54b68060c52a95621cae20132e90833dd999433",
+        "prNumbers": [
+          500
+        ]
+      }
+    },
+    {
+      "id": "as-promise-origin",
+      "question": "Why does source/as-promise/index.ts exist?",
+      "target": {
+        "path": "source/as-promise/index.ts"
+      },
+      "expected": {
+        "introducedSha": "286e31e0655f4aa98704ed3c9d65554c2354cae7",
+        "prNumbers": [
+          1051
+        ]
+      }
+    }
+  ]
+}
