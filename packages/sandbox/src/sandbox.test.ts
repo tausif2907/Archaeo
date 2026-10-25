@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { dependencyGroups, testGroups } from "./detect";
-import { dockerfile, imageTag } from "./docker";
+import { DockerSandbox, dockerfile, imageTag, SandboxUnavailableError } from "./docker";
 import { extractDiff, filesInDiff, isTestPath, splitDiff, testOnlyDiff } from "./patch";
 import { compareToBaseline, parsePytest } from "./results";
 
@@ -63,6 +63,14 @@ describe("pytest results", () => {
     // A failing baseline we can't parse can't be compared, so nothing is offered.
     expect(compareToBaseline(run(1, null), run(0, [])).passed).toBe(false);
     expect(compareToBaseline(run(0, []), { ...run(124, null), timedOut: true }).passed).toBe(false);
+  });
+});
+
+describe("docker availability", () => {
+  it("explains a missing or stopped Docker daemon instead of failing mid-build", async () => {
+    const sandbox = new DockerSandbox({ docker: "docker-binary-that-does-not-exist" });
+    await expect(sandbox.checkAvailable()).rejects.toBeInstanceOf(SandboxUnavailableError);
+    await expect(sandbox.checkAvailable()).rejects.toThrow(/Docker is not available .*Start Docker Desktop/);
   });
 });
 

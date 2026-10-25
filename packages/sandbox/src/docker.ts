@@ -39,6 +39,13 @@ export interface SandboxProvider {
 
 const OUTPUT_TAIL = 8_000;
 
+export class SandboxUnavailableError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SandboxUnavailableError";
+  }
+}
+
 export function imageTag(repoName: string, config: SandboxConfig, files: Record<string, string>): string {
   const slug = repoName.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const key = createHash("sha256")
@@ -74,7 +81,18 @@ export class DockerSandbox implements SandboxProvider {
     return this.opts.docker ?? "docker";
   }
 
+  /** Fails fast with a clear message when the Docker daemon isn't reachable. */
+  async checkAvailable(): Promise<void> {
+    const r = await exec(this.docker, ["version", "--format", "{{.Server.Version}}"], { timeoutMs: 15_000 });
+    if (r.exitCode !== 0) {
+      throw new SandboxUnavailableError(
+        `Docker is not available (${r.output.trim().split("\n").pop() || `exit code ${r.exitCode}`}). Start Docker Desktop or the Docker daemon, then try the fix again.`,
+      );
+    }
+  }
+
   async ensureImage(input: PrepareInput, onPhase?: (phase: string) => void): Promise<string> {
+    await this.checkAvailable();
     const tag = imageTag(input.repoName, input.config, input.files);
     if ((await exec(this.docker, ["image", "inspect", tag])).exitCode === 0) return tag;
 
