@@ -21,6 +21,6 @@
     { "id": "no-such-command-origin", "question": "Why does the NoSuchCommand exception exist?", "target": { "path": "src/click/exceptions.py", "symbol": "NoSuchCommand" }, "expected": { "introducedSha": "831c8f0", "prNumbers": [3228] } },
     { "id": "get-pager-file-origin", "question": "Why does get_pager_file exist?", "target": { "path": "src/click/termui.py", "symbol": "get_pager_file" }, "expected": { "introducedSha": "c69643b", "prNumbers": [1572] } },
     { "id": "sentinel-origin", "question": "Why does the Sentinel enum exist?", "target": { "path": "src/click/_utils.py", "symbol": "Sentinel" }, "expected": { "introducedSha": "b64ea07", "prNumbers": [] } },
-    { "id": "group-origin", "question": "Why does the Group class exist?", "target": { "path": "src/click/core.py", "symbol": "Group" }, "expected": { "introducedSha": "955beb8", "prNumbers": [] } }
+    { "id": "group-origin", "question": "Why does the Group class exist?", "target": { "path": "src/click/core.py", "symbol": "Group" }, "expected": { "introducedSha": "4101de3", "prNumbers": [] } }
   ]
 }
