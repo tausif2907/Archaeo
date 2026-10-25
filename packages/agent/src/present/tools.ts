@@ -56,7 +56,8 @@ export function safeRepoPath(repoDir: string, path: string): string | null {
 // ---------------------------------------------------------------- search_code
 
 const STOPWORDS = new Set(
-  "the and for with that this from what where which when how does do did are was were is its into about there their they them then than have has had not but can could would should will just only also any all each some such who whom why use used using code file files function functions class method implemented implement handle handled handles work works get set".split(
+  // The last few are placeholder values from bug-report examples ([foo|bar|baz]), not code to search for.
+  "the and for with that this from what where which when how does do did are was were is its into about there their they them then than have has had not but can could would should will just only also any all each some such who whom why use used using code file files function functions class method implemented implement handle handled handles work works get set foo bar baz qux quux".split(
     " ",
   ),
 );

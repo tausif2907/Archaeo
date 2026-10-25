@@ -133,6 +133,9 @@ describe("tool helpers", () => {
   it("extracts search keywords without stopwords", () => {
     expect(keywords("Where is the zsh shell completion implemented?")).toEqual(["zsh", "shell", "completion"]);
     expect(keywords("How does Context.invoke handle callbacks")).toEqual(["context", "invoke", "callbacks"]);
+    // Example values in bug reports are not code to search for ("bar" would find `progressbar`).
+    expect(keywords("Usage shows [[foo|bar|baz]] for an optional Choice")).toEqual(["usage", "shows", "optional", "choice"]);
+    expect(keywords("a b c d e f g h i j k l m n o p q r s t".replace(/ /g, "xx "), 3)).toHaveLength(3);
   });
 
   it("stems longer search terms", () => {
