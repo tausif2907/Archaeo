@@ -15,7 +15,8 @@ interface Bug {
   preFixSha: string;
   fixSha: string;
   fixFiles: string[];
-  replayWrongPatch: string;
+  /** Replay only: a wrong patch tried before the real fix, to exercise retry */
+  replayWrongPatch?: string;
 }
 
 const replay = process.argv.includes("--replay");
@@ -75,7 +76,7 @@ for (const bug of dataset.bugs) {
   if (replay) {
     // Pipeline check: a wrong patch first, then the real historical fix (source + its regression tests).
     const realFix = (await exec("git", ["-C", repoDir, "diff", bug.preFixSha, bug.fixSha, "--", "src", "tests"])).output;
-    const script = [bug.replayWrongPatch, realFix].map((d) => ({ content: `\`\`\`diff\n${d}\`\`\``, toolCalls: [], finishReason: "stop" as const }));
+    const script = [bug.replayWrongPatch, realFix].filter((d): d is string => !!d).map((d) => ({ content: `\`\`\`diff\n${d}\`\`\``, toolCalls: [], finishReason: "stop" as const }));
     fixModels = createModels({ config: loadModelConfig({}), providers: { mock: new MockProvider({ script }) } });
   }
   const result = await (async () => {

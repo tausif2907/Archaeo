@@ -1,6 +1,6 @@
 {
   "repo": "https://github.com/pallets/click",
-  "notes": "Historical bugs: the commit before the real fix, a symptom-only report (no file or function names), and the files the real fix changed. `--replay` feeds the real fix to the pipeline to validate sandbox, apply, test, retry and approval plumbing; it does not measure a model. Phase 5 grows this to 5-10 bugs.",
+  "notes": "Historical bugs: the commit before the real fix, a symptom-only report (no file or function names), and the source files the real fix changed. Every bug was checked in the sandbox: the real fix's tests fail at the pre-fix commit and pass with the fix. `--replay` feeds the real fix to the pipeline to validate sandbox, apply, test, retry and approval plumbing; it does not measure a model. Left out: b7e5fd4 (fish completion), because its tests pin an internal output format that a symptom report cannot specify, and f58ca3e, whose tests already pass before the fix.",
   "bugs": [
     {
       "id": "choice-double-brackets",
@@ -8,8 +8,70 @@
       "report": "The usage line for an optional argument with a Choice type shows doubled square brackets.\n\n```python\n@click.command()\n@click.argument(\"method\", type=click.Choice([\"foo\", \"bar\", \"baz\"]), required=False)\ndef cli(method):\n    pass\n```\n\n`cli --help` prints `Usage: cli [OPTIONS] [[foo|bar|baz]]` instead of `Usage: cli [OPTIONS] [foo|bar|baz]`. The same happens with `nargs=-1` and with `click.DateTime` arguments.",
       "preFixSha": "8929d392781c8113bc569f388c15c47b94f86581",
       "fixSha": "762c97eef7c1b3779678992f26a553a2a8c80793",
-      "fixFiles": ["src/click/core.py"],
+      "fixFiles": [
+        "src/click/core.py"
+      ],
       "replayWrongPatch": "--- a/src/click/core.py\n+++ b/src/click/core.py\n@@ -3573,7 +3573,7 @@ class Argument(Parameter):\n             var = self.name.upper()\n         if self.deprecated:\n             var += \"!\"\n-        if not self.required:\n+        if False:\n             var = f\"[{var}]\"\n         if self.nargs != 1:\n             var += \"...\"\n"
+    },
+    {
+      "id": "short-help-abbreviation",
+      "title": "Short help stops at an abbreviation inside the first sentence",
+      "report": "In a group's `--help`, the one-line help for a subcommand is cut off at abbreviations.\n\n```python\n@click.group()\ndef cli():\n    pass\n\n@cli.command()\ndef fruit():\n    \"\"\"Weigh apples vs. pears.\"\"\"\n```\n\n`cli --help` lists `fruit  Weigh apples vs.` instead of `fruit  Weigh apples vs. pears.`. The same happens with `e.g.` or `i.e.` in the middle of a sentence. A period should only end the sentence when it ends the text or the next word starts with something other than a lowercase letter.",
+      "preFixSha": "6d5bac5c712195cbfa9666ba0ecbf0573cdea356",
+      "fixSha": "f67c2bb6c2f055c1c7a57cd46c3697fc26a7742e",
+      "fixFiles": [
+        "src/click/utils.py"
+      ]
+    },
+    {
+      "id": "style-black-color",
+      "title": "style() drops color index 0 and accepts invalid colors",
+      "report": "`click.style(\"x y\", fg=0)` returns `x y\\x1b[0m` with no color code, but 0 is black in the 256-color palette; `fg=91` correctly gives `\\x1b[38;5;91m`. `bg=0` and `click.secho(..., fg=0)` have the same problem.\n\nInvalid colors are also accepted silently: `fg=256`, `fg=0.0`, `fg=()`, `fg=(0, 0)`, `fg=(0, 256, 0)` or `fg=(\"0\", \"0\", \"0\")` produce broken escape codes instead of failing. They should raise `ValueError` with a message starting `Unknown color`.",
+      "preFixSha": "7925a3410d7098c28cfca3b2baa6c852666bbd14",
+      "fixSha": "07c909f23f0f83b5ca137c167b9a134d66201f67",
+      "fixFiles": [
+        "src/click/termui.py"
+      ]
+    },
+    {
+      "id": "deprecated-label-space",
+      "title": "Deprecated label gets a stray leading space when help is empty",
+      "report": "A deprecated command or option with no help text renders its deprecation label with an extra leading space.\n\n```python\n@click.command(deprecated=True)\ndef cli():\n    pass\n```\n\n`cli --help` prints `   (DEPRECATED)` (three spaces) where every other line is indented by two. For `click.Option([\"--foo\"], deprecated=\"USE B INSTEAD\")` with no help, the help column reads ` (DEPRECATED: USE B INSTEAD)` with a leading space. Both happen whether the help is `\"\"` or missing.",
+      "preFixSha": "648d7c403829013ade629d63ddbfe808f6b2b770",
+      "fixSha": "82f377c547e1867d073f02bb8f476214d07e245b",
+      "fixFiles": [
+        "src/click/core.py"
+      ]
+    },
+    {
+      "id": "write-usage-no-args",
+      "title": "Usage line is blank when a program has no arguments",
+      "report": "Writing a usage line for a program with no arguments produces only a blank line.\n\n```python\nformatter = click.HelpFormatter()\nformatter.write_usage(\"Program\")\nprint(repr(formatter.getvalue()))\n```\n\nThis prints `'\\n'` instead of `'Usage: Program\\n'`. A custom prefix is lost the same way (`prefix=\"Run: \"` should give `Run: Program`), and the current indentation should be kept. The line should end at the program name, with no trailing space.",
+      "preFixSha": "7c99ebe23b931f27562d926814423cce85fd9766",
+      "fixSha": "0551bf53588ae87f462d336f24f853a156fefe3a",
+      "fixFiles": [
+        "src/click/formatting.py"
+      ]
+    },
+    {
+      "id": "hidden-prompt-error-message",
+      "title": "Hidden prompts hide custom validation messages",
+      "report": "When a prompt hides its input, my type's validation message is replaced by a generic one.\n\n```python\nclass Password(click.ParamType):\n    name = \"password\"\n    def convert(self, value, param, ctx):\n        if len(value) < 4:\n            self.fail(\"Password must be at least 4 characters\", param, ctx)\n        return value\n\nclick.prompt(\"Password\", hide_input=True, type=Password())\n```\n\nTyping `abc` shows `Error: The value you entered was invalid.` instead of `Error: Password must be at least 4 characters`. Without `hide_input` the real message appears. The typed value must still never be revealed: for built-in types the message should mask it (`'***' is not a valid integer`), and a custom message that contains the typed text should fall back to the generic message.",
+      "preFixSha": "fc6c7c47edd6110b6bd5a1a5297b2035214b0cd1",
+      "fixSha": "a09c1c655eef3d43181eb46036b66cf058d72df4",
+      "fixFiles": [
+        "src/click/termui.py"
+      ]
+    },
+    {
+      "id": "version-option-import-name",
+      "title": "version_option fails when the import name differs from the distribution name",
+      "report": "`@click.version_option(package_name=\"PIL\")` makes `--version` raise `RuntimeError: 'PIL' is not installed`, even though Pillow (which provides the `PIL` module) is installed. The same happens when the package name is detected automatically, and for other packages whose module name differs from their distribution, such as `jwt` from PyJWT.\n\nIt should find the distribution that provides that top-level module and print its version. If a module name is provided by more than one installed distribution, the error should say it maps to multiple installed distributions and name them. A name that matches nothing should still say it is not installed.",
+      "preFixSha": "916883afad450c0c9bbc4212817900949131adbd",
+      "fixSha": "bec59289d8cf9b9b4010642b2fee483e5f8eeefc",
+      "fixFiles": [
+        "src/click/decorators.py"
+      ]
     }
   ]
 }
