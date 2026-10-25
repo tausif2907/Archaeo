@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type FormEvent } from "react";
 import { parseGitHubUrl, type RepoDto } from "@archaeo/shared";
-import { api } from "@/lib/api";
+import { API_URL, api } from "@/lib/api";
 import { STATUS_STYLES } from "./repo-status";
 
 export function RepoIntake() {
@@ -13,9 +13,10 @@ export function RepoIntake() {
   const [repos, setRepos] = useState<RepoDto[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [apiDown, setApiDown] = useState(false);
 
   useEffect(() => {
-    api.listRepos().then(setRepos, () => setRepos([]));
+    api.listRepos().then(setRepos, () => setApiDown(true));
   }, []);
 
   async function onSubmit(e: FormEvent) {
@@ -58,6 +59,11 @@ export function RepoIntake() {
         </button>
       </form>
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {apiDown && !error && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          Can&apos;t reach the Archaeo API at {API_URL}. Start it with <code className="font-mono">pnpm dev</code>.
+        </p>
+      )}
 
       {repos.length > 0 && (
         <div className="space-y-2">

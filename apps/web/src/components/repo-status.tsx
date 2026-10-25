@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { RepoProgressDto, RepoStatus, StageProgress } from "@archaeo/shared";
-import { api } from "@/lib/api";
+import Link from "next/link";
+import { API_URL, api } from "@/lib/api";
 
 export const STATUS_STYLES: Record<RepoStatus, string> = {
   queued: "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
@@ -91,8 +92,22 @@ export function RepoStatusCard({ repoId, onProgress }: { repoId: string; onProgr
     }
   }
 
+  if (!progress && error) {
+    const notFound = /not found/i.test(error);
+    return (
+      <article className="space-y-3 rounded-xl border border-red-200 bg-white p-5 dark:border-red-900 dark:bg-stone-900">
+        <h1 className="text-lg font-semibold">{notFound ? "Repository not found" : "Can't reach the Archaeo API"}</h1>
+        <p className="text-sm text-stone-600 dark:text-stone-400">
+          {notFound ? "This repository isn't in Archaeo. Add it from the home page." : `${error}. Check that the API is running (pnpm dev) and reachable at ${API_URL}.`}
+        </p>
+        <Link href="/" className="inline-block text-sm font-medium underline-offset-4 hover:underline">
+          ← Back to Archaeo
+        </Link>
+      </article>
+    );
+  }
   if (!progress) {
-    return <div className="h-40 animate-pulse rounded-xl border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">{error && <p className="p-5 text-sm text-red-600">{error}</p>}</div>;
+    return <div className="h-40 animate-pulse rounded-xl border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900" />;
   }
 
   const { repo, counts } = progress;
