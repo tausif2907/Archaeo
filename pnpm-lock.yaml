@@ -187,6 +187,12 @@ importers:
 
   packages/ingest:
     dependencies:
+      '@archaeo/db':
+        specifier: workspace:*
+        version: link:../db
+      '@archaeo/models':
+        specifier: workspace:*
+        version: link:../models
       '@archaeo/shared':
         specifier: workspace:*
         version: link:../shared

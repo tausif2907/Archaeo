@@ -1,25 +1,20 @@
 import { join } from "node:path";
-import { chunksMissingEmbedding, setChunkEmbeddings, type Prisma, type PrismaClient } from "@archaeo/db";
+import type { Prisma, PrismaClient } from "@archaeo/db";
 import {
-  buildCallEdges,
-  buildImportEdges,
   cloneOrUpdate,
-  codeChunks,
   commitChunkText,
   computeChurn,
   createOctokit,
-  createParser,
+  embedPendingChunks,
   fetchIssues,
   fetchMergedPullRequests,
-  ImportResolver,
+  indexCode,
   linkPullRequests,
   listTrackedFiles,
   prChunkText,
   readGitLog,
   scanSourceFiles,
-  symbolKey,
   type CommitInfo,
-  type ParsedFile,
   type SourceFile,
 } from "@archaeo/ingest";
 import type { Models } from "@archaeo/models";
@@ -71,7 +66,7 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
   const sources = await stage("parse", "Parsing source files", async () => {
     const files = await scanSourceFiles(dir, await listTrackedFiles(dir), { maxLoc: config.maxLoc });
     const stale = ((repo.stats as RepoStats | null)?.indexVersion ?? 1) < INDEX_VERSION;
-    await writeCode(deps, repoId, files, stale);
+    await indexCode(deps, repoId, files, stale);
     return files;
   });
 
@@ -87,7 +82,7 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
     await relinkPullRequests(deps, repoId, commits);
   });
 
-  await stage("embed", "Embedding code, commits and PRs", () => embedPending(deps, repoId));
+  await stage("embed", "Embedding code, commits and PRs", () => embedPendingChunks({ ...deps, batchSize: config.embedBatchSize }, repoId));
 
   const summarizeJobs = await stage("summarize", "Summarizing files and commits", () => planSummaries(deps, repoId));
 
@@ -106,105 +101,6 @@ function dominantLanguage(files: SourceFile[]): string | null {
   const byLang = new Map<string, number>();
   for (const f of files) byLang.set(f.language, (byLang.get(f.language) ?? 0) + f.loc);
   return [...byLang].sort((a, b) => b[1] - a[1])[0]?.[0] ?? null;
-}
-
-// ---------------------------------------------------------------- parse
-
-async function writeCode({ prisma, log }: IngestDeps, repoId: string, sources: SourceFile[], reindexAll: boolean): Promise<void> {
-  const parser = await createParser();
-  const parsed: ParsedFile[] = [];
-  const parsedByPath = new Map<string, ParsedFile>();
-  for (const src of sources) {
-    const p = parser.parse(src.path, src.content);
-    if (!p) continue;
-    parsed.push(p);
-    parsedByPath.set(src.path, p);
-  }
-
-  const existing = await prisma.file.findMany({ where: { repoId }, select: { id: true, path: true, hash: true } });
-  const existingByPath = new Map(existing.map((f) => [f.path, f]));
-  const current = new Set(sources.map((s) => s.path));
-
-  const stale = existing.filter((f) => !current.has(f.path));
-  if (stale.length) {
-    await prisma.chunk.deleteMany({ where: { repoId, sourceType: "code", path: { in: stale.map((f) => f.path) } } });
-    await prisma.file.deleteMany({ where: { id: { in: stale.map((f) => f.id) } } });
-  }
-
-  const changed = sources.filter((s) => reindexAll || existingByPath.get(s.path)?.hash !== s.hash);
-  log(`  ${sources.length} source files, ${changed.length} ${reindexAll ? "re-indexed (index version changed)" : "new or changed"}, ${stale.length} removed`);
-
-  for (const src of changed) {
-    const p = parsedByPath.get(src.path);
-    if (!p) continue;
-    await prisma.$transaction(async (tx) => {
-      const file = await tx.file.upsert({
-        where: { repoId_path: { repoId, path: src.path } },
-        create: { repoId, path: src.path, language: src.language, hash: src.hash, loc: src.loc, complexity: p.complexity },
-        // Keep the summary unless the content itself changed.
-        update: { language: src.language, hash: src.hash, loc: src.loc, complexity: p.complexity, ...(existingByPath.get(src.path)?.hash !== src.hash ? { summary: null } : {}) },
-      });
-      await tx.symbol.deleteMany({ where: { fileId: file.id } });
-      await tx.chunk.deleteMany({ where: { repoId, sourceType: "code", path: src.path } });
-
-      const symbols = await tx.symbol.createManyAndReturn({
-        data: p.symbols.map((s) => ({
-          fileId: file.id,
-          kind: s.kind,
-          name: s.name,
-          qualifiedName: s.qualifiedName,
-          startLine: s.startLine,
-          endLine: s.endLine,
-        })),
-        select: { id: true, qualifiedName: true, startLine: true },
-      });
-      const symbolIds = new Map(symbols.map((s) => [symbolKey(src.path, s), s.id]));
-
-      const chunks = codeChunks(src, p);
-      await tx.chunk.createMany({
-        data: chunks.map((c) => ({
-          repoId,
-          sourceType: "code" as const,
-          sourceId: symbolIds.get(c.sourceKey) ?? file.id,
-          path: c.path,
-          startLine: c.startLine,
-          endLine: c.endLine,
-          text: c.text,
-        })),
-      });
-    });
-  }
-
-  // Edges are cheap to rebuild and depend on every file, so always rebuild them in full.
-  const files = await prisma.file.findMany({ where: { repoId }, select: { id: true, path: true } });
-  const fileIds = new Map(files.map((f) => [f.path, f.id]));
-  const symbols = await prisma.symbol.findMany({
-    where: { file: { repoId } },
-    select: { id: true, qualifiedName: true, startLine: true, file: { select: { path: true } } },
-  });
-  const symbolIds = new Map(symbols.map((s) => [symbolKey(s.file.path, s), s.id]));
-
-  const importEdges = buildImportEdges(parsed, new ImportResolver(parsed.map((p) => p.path)));
-  const callEdges = buildCallEdges(parsed, importEdges);
-
-  await prisma.$transaction([
-    prisma.edge.deleteMany({ where: { repoId } }),
-    prisma.edge.createMany({
-      data: importEdges.flatMap((e) => {
-        const fromFileId = fileIds.get(e.from);
-        const toFileId = fileIds.get(e.to);
-        return fromFileId && toFileId ? [{ repoId, kind: "import" as const, fromFileId, toFileId }] : [];
-      }),
-    }),
-    prisma.edge.createMany({
-      data: callEdges.flatMap((e) => {
-        const fromSymbolId = symbolIds.get(e.from);
-        const toSymbolId = symbolIds.get(e.to);
-        return fromSymbolId && toSymbolId ? [{ repoId, kind: "call" as const, fromSymbolId, toSymbolId }] : [];
-      }),
-    }),
-  ]);
-  log(`  ${importEdges.length} import edges, ${callEdges.length} call edges`);
 }
 
 // ---------------------------------------------------------------- history
@@ -311,22 +207,6 @@ async function relinkPullRequests({ prisma, log }: IngestDeps, repoId: string, c
 }
 
 // ---------------------------------------------------------------- embed + summarize
-
-async function embedPending({ prisma, models, config, log }: IngestDeps, repoId: string): Promise<void> {
-  let total = 0;
-  for (;;) {
-    const rows = await chunksMissingEmbedding(prisma, repoId, config.embedBatchSize);
-    if (rows.length === 0) break;
-    const vectors = await models.embed(rows.map((r) => r.text));
-    if (vectors.length !== rows.length) throw new Error(`embed returned ${vectors.length} vectors for ${rows.length} texts`);
-    await setChunkEmbeddings(
-      prisma,
-      rows.map((r, i) => ({ id: r.id, embedding: vectors[i]! })),
-    );
-    total += rows.length;
-  }
-  log(`  embedded ${total} chunks`);
-}
 
 async function recentCommitIds(prisma: PrismaClient, repoId: string, max: number) {
   return prisma.commit.findMany({ where: { repoId }, orderBy: { date: "desc" }, take: max, select: { id: true, summary: true } });

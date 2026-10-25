@@ -9,3 +9,4 @@ export * from "./github";
 export * from "./links";
 export * from "./scan";
 export * from "./chunk";
+export * from "./indexer";

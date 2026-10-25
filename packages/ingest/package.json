@@ -11,6 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@archaeo/db": "workspace:*",
+    "@archaeo/models": "workspace:*",
     "@archaeo/shared": "workspace:*",
     "@octokit/rest": "^22.0.0",
     "simple-git": "^3.27.0",
