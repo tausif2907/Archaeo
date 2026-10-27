@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createModels, loadModelConfig, MockProvider, type ModelCallRecord, type ModelTask } from "./index";
+import { createModels, estimateCost, loadModelConfig, MockProvider, routeId, type ModelCallRecord, type ModelTask } from "./index";
 
 function setup(script?: ConstructorParameters<typeof MockProvider>[0]) {
   const calls: ModelCallRecord[] = [];
@@ -95,5 +95,20 @@ describe("models contract (mock provider)", () => {
     expect(c).not.toEqual(a);
     expect(await models.embed([])).toEqual([]);
     expectRecorded(calls, "embed", config.tasks.embed.model);
+  });
+});
+
+describe("model config", () => {
+  it("reads prices from MODEL_PRICING and rejects malformed ones", () => {
+    const config = loadModelConfig({ MODEL_PRICING: '{"accounts/fw/models/m":{"inputPerM":0.2,"outputPerM":0.8}}' });
+    expect(estimateCost(config.pricing, "accounts/fw/models/m", 1_000_000, 500_000)).toBeCloseTo(0.6);
+    expect(loadModelConfig({}).pricing).toEqual({});
+    expect(() => loadModelConfig({ MODEL_PRICING: "muse=1/4" })).toThrow(/must be JSON/);
+    expect(() => loadModelConfig({ MODEL_PRICING: '{"m":{"inputPerM":1}}' })).toThrow(/numeric inputPerM and outputPerM/);
+  });
+
+  it("names each task's route so stored data can record its model", () => {
+    expect(routeId(loadModelConfig({}), "embed")).toBe("mock/openweights-embedding-tbd");
+    expect(routeId(loadModelConfig({ MODEL_PROVIDER: "live", MODEL_REASON: "muse-spark-x" }), "reason")).toBe("meta/muse-spark-x");
   });
 });

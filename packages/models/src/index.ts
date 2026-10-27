@@ -16,7 +16,7 @@ import type {
 } from "./types";
 
 export * from "./types";
-export { loadModelConfig, estimateCost, type ModelConfig, type Pricing, type ProviderName, type TaskRoute } from "./config";
+export { loadModelConfig, estimateCost, routeId, type ModelConfig, type Pricing, type ProviderName, type TaskRoute } from "./config";
 export { MockProvider, MOCK_PATCH, mockEmbedding, estimateTokens } from "./providers/mock";
 export { OpenAICompatibleProvider } from "./providers/openai-compatible";
 

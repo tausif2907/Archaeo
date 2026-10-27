@@ -61,6 +61,15 @@ const TASK_ENV: Record<ModelTask, string> = {
   embed: "MODEL_EMBED",
 };
 
+/**
+ * "provider/model" for a task, e.g. "fireworks/<embedding model>". Stored next to what a model produced
+ * (embeddings, summaries, narratives) so a later model change is noticed and that data is redone.
+ */
+export function routeId(config: Pick<ModelConfig, "tasks">, task: ModelTask): string {
+  const route = config.tasks[task];
+  return `${route.provider}/${route.model}`;
+}
+
 /** Builds the config from environment variables. Mock mode is the default. */
 export function loadModelConfig(env: NodeJS.ProcessEnv = process.env): ModelConfig {
   const mode = env.MODEL_PROVIDER === "live" ? "live" : "mock";
@@ -92,9 +101,26 @@ export function loadModelConfig(env: NodeJS.ProcessEnv = process.env): ModelConf
               apiKey: env.FIREWORKS_API_KEY ?? "",
             },
     },
-    // Fill in real prices at kickoff. Unknown models cost 0 so tracking never blocks a call.
-    pricing: {},
+    // Unknown models cost 0, so tracking never blocks a call, but run cost limits then never trigger.
+    pricing: parsePricing(env.MODEL_PRICING),
   };
+}
+
+/** `MODEL_PRICING`: JSON of USD per 1M tokens by model ID, e.g. {"muse-spark":{"inputPerM":1,"outputPerM":4}}. */
+export function parsePricing(raw: string | undefined): Record<string, Pricing> {
+  if (!raw?.trim()) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error('MODEL_PRICING must be JSON, e.g. {"muse-spark":{"inputPerM":1,"outputPerM":4}}');
+  }
+  const out: Record<string, Pricing> = {};
+  for (const [model, p] of Object.entries((parsed ?? {}) as Record<string, Partial<Pricing>>)) {
+    if (typeof p?.inputPerM !== "number" || typeof p.outputPerM !== "number") throw new Error(`MODEL_PRICING for ${model} needs numeric inputPerM and outputPerM`);
+    out[model] = { inputPerM: p.inputPerM, outputPerM: p.outputPerM };
+  }
+  return out;
 }
 
 export function estimateCost(pricing: Record<string, Pricing>, model: string, tokensIn: number, tokensOut: number): number {
