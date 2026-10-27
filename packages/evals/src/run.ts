@@ -2,8 +2,9 @@ import "@archaeo/shared/load-env";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { prisma } from "@archaeo/db";
-import { configureModels, loadModelConfig, type ModelConfig } from "@archaeo/models";
+import { configureModels, loadModelConfig, routeId, type ModelConfig } from "@archaeo/models";
 import { exec } from "@archaeo/sandbox";
+import type { RepoStats } from "@archaeo/shared";
 import { CostMeter, datasetRepos, flag, loadDataset, pct, type SuiteResult } from "./common";
 import { evalBugs, evalHistory, evalQa, type Bug, type HistoryQuestion, type QaQuestion } from "./suites";
 
@@ -38,6 +39,12 @@ for (const key of repos) {
       skipped.push(`${key} ${suite}: ${dataset.repo} is not ingested (${repo?.status ?? "missing"})`);
       continue;
     }
+    // Scores against embeddings from another model (e.g. mock ones) would not describe the configured models.
+    const builtWith = (repo.stats as RepoStats | null)?.models?.embed;
+    if (builtWith !== routeId(config, "embed")) {
+      skipped.push(`${key} ${suite}: ${dataset.repo} was embedded with ${builtWith ?? "unrecorded models"}, not ${routeId(config, "embed")}; re-ingest it (pnpm demo:prepare or Re-ingest)`);
+      continue;
+    }
     const head = `${repo.owner}/${repo.name} at \`${repo.headSha?.slice(0, 7)}\``;
     if (!heads.includes(head)) heads.push(head);
 
@@ -60,6 +67,7 @@ const markdown = renderReport(results, { config, archaeoHead, heads, skipped, fi
 await mkdir(dirname(REPORT), { recursive: true });
 await writeFile(REPORT, markdown);
 console.log(`\nWrote ${REPORT}`);
+for (const s of skipped) console.log(`Skipped: ${s}`);
 for (const r of results) for (const s of r.scores) console.log(`${r.repo} ${r.suite}: ${s.label}: ${pct(s)}`);
 await prisma.$disconnect();
 

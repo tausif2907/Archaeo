@@ -17,7 +17,7 @@ import {
   type CommitInfo,
   type SourceFile,
 } from "@archaeo/ingest";
-import type { Models } from "@archaeo/models";
+import { loadModelConfig, routeId, type Models } from "@archaeo/models";
 import type { IngestStage, RepoStats, SummarizeJobData } from "@archaeo/shared";
 import type { IngestConfig } from "./config";
 
@@ -84,6 +84,11 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
     await relinkPullRequests(deps, repoId, commits);
   });
 
+  // Embeddings and summaries from another model (mock ones, before live keys) are redone rather than mixed with new ones.
+  const modelConfig = loadModelConfig();
+  const modelRoutes = { embed: routeId(modelConfig, "embed"), summarize: routeId(modelConfig, "summarizeCheap") };
+  await resetForModelChange(deps, repoId, (repo.stats as RepoStats | null)?.models, modelRoutes);
+
   await stage("embed", "Embedding code, commits and PRs", () => embedPendingChunks({ ...deps, batchSize: config.embedBatchSize }, repoId));
 
   const summarizeJobs = await stage("summarize", "Summarizing files and commits", () => planSummaries(deps, repoId));
@@ -94,9 +99,26 @@ export async function runIngest(repoId: string, deps: IngestDeps): Promise<Inges
     durationsMs,
     summarizeTotal: await summarizeTotal(prisma, repoId, config.summarizeMaxCommits),
     indexVersion: INDEX_VERSION,
+    models: modelRoutes,
   };
   await prisma.repo.update({ where: { id: repoId }, data: { stats: stats as Prisma.InputJsonValue } });
   return { summarizeJobs };
+}
+
+/** Clears embeddings or summaries that a different model produced, so this run redoes them. */
+async function resetForModelChange({ prisma, log }: IngestDeps, repoId: string, before: RepoStats["models"], now: NonNullable<RepoStats["models"]>): Promise<void> {
+  if (before?.embed !== now.embed) {
+    const n = await prisma.$executeRaw`UPDATE "Chunk" SET embedding = NULL WHERE "repoId" = ${repoId} AND embedding IS NOT NULL`;
+    if (n) log(`  embedding model changed (${before?.embed ?? "unrecorded"} → ${now.embed}): re-embedding ${n} chunks`);
+  }
+  if (before?.summarize !== now.summarize) {
+    const [files, commits] = await prisma.$transaction([
+      prisma.file.updateMany({ where: { repoId, summary: { not: null } }, data: { summary: null } }),
+      prisma.commit.updateMany({ where: { repoId, summary: { not: null } }, data: { summary: null } }),
+      prisma.module.updateMany({ where: { repoId }, data: { summary: null, fingerprint: null } }),
+    ]);
+    if (files.count + commits.count) log(`  summary model changed (${before?.summarize ?? "unrecorded"} → ${now.summarize}): re-summarizing`);
+  }
 }
 
 function dominantLanguage(files: SourceFile[]): string | null {

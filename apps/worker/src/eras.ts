@@ -11,7 +11,7 @@ import {
 } from "@archaeo/agent";
 import type { Prisma, PrismaClient } from "@archaeo/db";
 import { readTags, releaseTags } from "@archaeo/ingest";
-import type { Models } from "@archaeo/models";
+import { loadModelConfig, routeId, type Models } from "@archaeo/models";
 import type { EraStats } from "@archaeo/shared";
 import type { IngestConfig } from "./config";
 
@@ -26,11 +26,13 @@ const CONCURRENCY = 3;
 
 /**
  * Detects eras from stored commits and release tags, then writes a cited narrative per era.
- * Narratives are reused for eras whose evidence fingerprint is unchanged, unless `force`.
+ * Narratives are reused for eras whose evidence fingerprint is unchanged and that the current model wrote without
+ * falling back, unless `force`.
  */
 export async function runEras(repoId: string, { prisma, models, config, log }: ErasDeps, force = false): Promise<void> {
   const repo = await prisma.repo.findUniqueOrThrow({ where: { id: repoId } });
   await prisma.repo.update({ where: { id: repoId }, data: { erasStatus: "running", erasMessage: "Detecting eras" } });
+  const reasonModel = routeId(loadModelConfig(), "reason");
 
   const rows = await prisma.commit.findMany({ where: { repoId }, select: { sha: true, date: true, author: true, message: true, filesChanged: true } });
   const commits = rows.map((r) => {
@@ -69,10 +71,11 @@ export async function runEras(repoId: string, { prisma, models, config, log }: E
       while (next < drafts.length) {
         const i = next++;
         const ev = evidence[i]!;
+        // Reuse only what this model wrote, and retry narratives that fell back to evidence.
         const prev = force ? undefined : previousByFingerprint.get(eraFingerprint(ev));
-        if (prev) {
-          const stats = prev.stats as EraStats | null;
-          narratives[i] = { title: prev.title, narrative: prev.narrative!, fallback: stats?.fallback ?? false, invalidCitations: [], reused: true };
+        const prevStats = prev?.stats as EraStats | null | undefined;
+        if (prev && prevStats?.model === reasonModel && !prevStats.fallback) {
+          narratives[i] = { title: prev.title, narrative: prev.narrative!, fallback: false, invalidCitations: [], reused: true };
         } else {
           narratives[i] = { ...(await writeEraNarrative(models, ev, index)), reused: false };
           written++;
@@ -95,6 +98,7 @@ export async function runEras(repoId: string, { prisma, models, config, log }: E
           topAreas: ev.topAreas,
           releases: ev.releases,
           fallback: n.fallback,
+          model: reasonModel,
         };
         return {
           repoId,

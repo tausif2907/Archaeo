@@ -88,6 +88,8 @@ export interface RepoStats {
   durationsMs?: Partial<Record<IngestStage, number>>;
   /** Parser/chunker version the code index was built with */
   indexVersion?: number;
+  /** Model routes ("provider/model") the stored embeddings and summaries came from; absent before they were recorded */
+  models?: { embed: string; summarize: string };
 }
 
 export const QUEUES = {
@@ -119,6 +121,8 @@ export interface EraStats {
   releases: string[];
   /** Narrative was assembled from evidence because model output was unusable */
   fallback: boolean;
+  /** Model route ("provider/model") that wrote the narrative */
+  model?: string;
 }
 
 export interface EraDto {

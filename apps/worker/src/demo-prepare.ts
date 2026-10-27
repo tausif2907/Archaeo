@@ -4,13 +4,15 @@ import { join } from "node:path";
 import { Queue } from "bullmq";
 import { Redis } from "ioredis";
 import { prisma } from "@archaeo/db";
-import { parseGitHubUrl, QUEUES, type IngestJobData } from "@archaeo/shared";
+import { loadModelConfig, routeId } from "@archaeo/models";
+import { parseGitHubUrl, QUEUES, type IngestJobData, type RepoStats } from "@archaeo/shared";
 import { findRepoRoot, requireEnv } from "@archaeo/shared/env";
 
 /**
  * `pnpm demo:prepare`: gets a deployment demo-ready. Ingests every repo in demo/demo.json straight through the
- * database and job queue (a public demo refuses to add repos over HTTP), waits for the timeline, then sends each
- * warm-up request through the API once so the demo answers come from the result cache.
+ * database and job queue (a public demo refuses to add repos over HTTP), re-ingests repos built with other models
+ * (e.g. mock ones before live keys), waits for the timeline, then sends each warm-up request through the API once
+ * so the demo answers come from the result cache.
  */
 interface WarmItem {
   repo: string;
@@ -24,6 +26,9 @@ const apiUrl = process.env.API_URL || `http://localhost:${process.env.API_PORT |
 const redis = new Redis(requireEnv("REDIS_URL"), { maxRetriesPerRequest: null });
 const ingestQueue = new Queue<IngestJobData>(QUEUES.ingest, { connection: redis });
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const modelConfig = loadModelConfig();
+const routes = { embed: routeId(modelConfig, "embed"), summarize: routeId(modelConfig, "summarizeCheap") };
+const jobOpts = { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 } as const;
 let failed = false;
 
 const ids = new Map<string, string>();
@@ -33,8 +38,16 @@ for (const url of config.repos) {
   let repo = await prisma.repo.findUnique({ where: { url: ref.url } });
   if (!repo) {
     repo = await prisma.repo.create({ data: { url: ref.url, owner: ref.owner, name: ref.name } });
-    await ingestQueue.add("ingest", { repoId: repo.id }, { attempts: 2, backoff: { type: "exponential", delay: 5000 }, removeOnComplete: 100, removeOnFail: 100 });
+    await ingestQueue.add("ingest", { repoId: repo.id }, jobOpts);
     console.log(`${ref.owner}/${ref.name}: queued for ingest`);
+  } else if (repo.status !== "queued" && repo.status !== "ingesting") {
+    const built = (repo.stats as RepoStats | null)?.models;
+    if (built?.embed !== routes.embed || built?.summarize !== routes.summarize) {
+      // The timeline is marked pending too, so the wait below can't see the old "ready" between ingest and eras.
+      repo = await prisma.repo.update({ where: { id: repo.id }, data: { status: "queued", stage: null, statusMessage: null, erasStatus: "pending" } });
+      await ingestQueue.add("ingest", { repoId: repo.id }, jobOpts);
+      console.log(`${ref.owner}/${ref.name}: built with ${built?.embed ?? "unrecorded models"}; re-ingesting with ${routes.embed} and ${routes.summarize}`);
+    }
   }
   ids.set(ref.url, repo.id);
 
