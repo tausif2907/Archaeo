@@ -8,7 +8,8 @@
     "start": "tsx src/main.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run --passWithNoTests",
-    "demo:prepare": "tsx src/demo-prepare.ts"
+    "demo:prepare": "tsx src/demo-prepare.ts",
+    "models:check": "tsx src/models-check.ts"
   },
   "dependencies": {
     "@archaeo/agent": "workspace:*",

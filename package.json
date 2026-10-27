@@ -18,6 +18,7 @@
     "postinstall": "pnpm --filter @archaeo/db generate",
     "eval": "pnpm --filter @archaeo/evals eval",
     "demo:prepare": "pnpm --filter @archaeo/worker demo:prepare",
+    "models:check": "pnpm --filter @archaeo/worker models:check",
     "eval:history": "pnpm --filter @archaeo/evals history",
     "check:citations": "pnpm --filter @archaeo/evals check:citations",
     "eval:qa": "pnpm --filter @archaeo/evals qa",
