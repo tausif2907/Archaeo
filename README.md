@@ -50,7 +50,11 @@ All model calls go through `packages/models`, which routes each job to a model s
 | Patches and tests | `writeCode` | Muse Code | `MODEL_WRITE_CODE` |
 | Retrieval | `embed` | Open-weights embedding model | `MODEL_EMBED` |
 
-With `MODEL_PROVIDER=mock` (the default), everything runs offline with canned model outputs. Set `MODEL_PROVIDER=live` and the API keys to use the real models.
+With `MODEL_PROVIDER=mock` (the default), everything runs offline with canned model outputs. To use the real models:
+
+1. In `.env`, set `MODEL_PROVIDER=live`, the API keys and base URLs, the model IDs above, and `MODEL_PRICING` (prices per model, so per-run cost limits apply).
+2. Run `pnpm models:check`. It sends one small request per model and confirms tool calling, JSON answers, diffs, summaries, and that embeddings fit the database (1,024 dimensions).
+3. Re-ingest each repo, or run `pnpm demo:prepare`. Archaeo records which models produced a repo's embeddings, summaries and timeline, and redoes them when the models change.
 
 ## Quick start
 
@@ -107,7 +111,8 @@ The worker runs fix sandboxes through the server's Docker, so it has access to t
 | `pnpm eval` | Runs the history, Q&A and bug evals for every repo in `packages/evals/datasets/` and writes `evals/REPORT.md` (`-- --repo click`, `-- --suite qa`, `-- --no-fix` narrow a run; the repos must be ingested) |
 | `pnpm eval:history`, `pnpm eval:qa` | One suite, printed to the console (`-- --repo got` for another repo) |
 | `pnpm eval:bugs` | Traces and fixes the historical bugs in the sandbox; `-- --replay` replays the real fix to check the pipeline and approval gate |
-| `pnpm demo:prepare` | Ingests the repos in `demo/demo.json` and warms the demo answers |
+| `pnpm demo:prepare` | Ingests the repos in `demo/demo.json` (again if they were built with other models) and warms the demo answers |
+| `pnpm models:check` | One small request per configured model: keys, model IDs, tool calling, diffs and embedding size |
 | `pnpm e2e` | Playwright end-to-end tests: map speed and expand/collapse, Q&A citations, flow trace (needs the stack running; first run `pnpm exec playwright install chromium`) |
 | `pnpm check:citations` | Fails if any stored era narrative cites a commit or PR that doesn't exist |
 
