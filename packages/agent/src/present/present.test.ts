@@ -97,7 +97,7 @@ describe("agent loop limits", () => {
 
   it("stops at the cost limit", async () => {
     // Price the mock reason model so each call costs about $1.
-    const pricing = { "muse-spark": { inputPerM: 1_000_000, outputPerM: 0 } };
+    const pricing = { "mock-reason": { inputPerM: 1_000_000, outputPerM: 0 } };
     const res = await runLoop({
       models: modelsWith([callTool("1"), callTool("2"), callTool("3")], pricing),
       tools: [fakeTool("search")],

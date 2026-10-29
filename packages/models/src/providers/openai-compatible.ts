@@ -12,8 +12,9 @@ import type {
 import type { HttpProviderConfig } from "../config";
 
 /**
- * Provider for OpenAI-compatible HTTP APIs (Fireworks, Baseten, and likely the Meta Model API).
- * Wire format is unverified for Meta until kickoff; adjust here only, never in feature code.
+ * Provider for OpenAI-compatible HTTP APIs: the Meta Model API's Chat Completions, Baseten and Fireworks.
+ * Sends only fields the Meta Model API accepts (it rejects `stop`, `n` > 1 and any `tool_choice` but
+ * "auto"); adjust the wire format here only, never in feature code.
  */
 export class OpenAICompatibleProvider implements ModelProvider {
   constructor(

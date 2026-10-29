@@ -1,6 +1,6 @@
 import "@archaeo/shared/load-env";
 import { prisma } from "@archaeo/db";
-import { createModels, loadModelConfig, routeId, type CallRecorder, type ModelCallRecord, type ModelTask } from "@archaeo/models";
+import { createModels, loadModelConfig, providersInUse, routeId, type CallRecorder, type ModelCallRecord, type ModelTask } from "@archaeo/models";
 
 /**
  * `pnpm models:check`: one small request per model route the app uses, so live keys, model IDs and the API's wire
@@ -18,8 +18,12 @@ const [column] = await prisma.$queryRaw<{ dims: number }[]>`
 await prisma.$disconnect();
 
 console.log(`Mode: ${config.mode}`);
-for (const [name, p] of Object.entries(config.providers)) {
-  console.log(`  ${name}: base URL ${p.baseUrl ? "set" : "missing"}, API key ${p.apiKey ? "set" : "missing"}`);
+// In mock mode, show what live mode would call, so missing keys are visible before switching.
+const live = config.mode === "live" ? config : loadModelConfig({ ...process.env, MODEL_PROVIDER: "live" });
+for (const [name, tasks] of providersInUse(live)) {
+  const p = live.providers[name];
+  const ids = [...new Set(tasks.map((t) => live.tasks[t].model))].join(", ");
+  console.log(`  ${name} (${tasks.join(", ")}; ${ids}): base URL ${p.baseUrl ? "set" : "missing"}, API key ${p.apiKey ? "set" : "missing"}`);
 }
 if (config.mode === "mock") {
   console.log("Nothing to check: every task uses the offline mock. Set MODEL_PROVIDER=live in .env to check the real models.");

@@ -31,8 +31,9 @@ flowchart LR
   worker --> sandbox[Docker sandbox: tests run offline]
   api --> models[packages/models]
   worker --> models
-  models --> meta[Meta Model API: Muse Spark, Muse Code]
-  models --> openweights[Open-weights models on Fireworks or Baseten]
+  models --> meta[Meta Model API: Muse Spark]
+  models --> baseten[Muse Spark Open on Baseten]
+  models --> fireworks[Embeddings on Fireworks]
 ```
 
 1. **Ingest.** Clone the repo, parse it with tree-sitter (Python, TypeScript, JavaScript), build import and call graphs, read the commit history plus merged pull requests and issues, embed code and history into pgvector, and summarize files, folders and the repo.
@@ -45,14 +46,14 @@ All model calls go through `packages/models`, which routes each job to a model s
 
 | Job | Function | Model | Setting |
 |---|---|---|---|
-| File and commit summaries | `summarizeCheap` | Meta open-weights model on Fireworks or Baseten | `MODEL_SUMMARIZE` |
-| Era stories, Q&A, bug reasoning | `reason` | Muse Spark | `MODEL_REASON` |
-| Patches and tests | `writeCode` | Muse Code | `MODEL_WRITE_CODE` |
-| Retrieval | `embed` | Open-weights embedding model | `MODEL_EMBED` |
+| File and commit summaries | `summarizeCheap` | Muse Spark Open, Meta's open-weights model, on Baseten (`meta-models/muse-spark-open`) | `MODEL_SUMMARIZE` |
+| Era stories, Q&A, bug reasoning | `reason` | Muse Spark on the Meta Model API (`muse-spark-1.3`) | `MODEL_REASON` |
+| Patches and tests | `writeCode` | Muse Spark (`muse-spark-1.3`), the model Meta's Muse Code agent is built on | `MODEL_WRITE_CODE` |
+| Retrieval | `embed` | Qwen3 Embedding 0.6B on Fireworks (`accounts/fireworks/models/qwen3-embedding-0p6b`); the Meta Model API has no embedding model | `MODEL_EMBED` |
 
 With `MODEL_PROVIDER=mock` (the default), everything runs offline with canned model outputs. To use the real models:
 
-1. In `.env`, set `MODEL_PROVIDER=live`, the API keys and base URLs, the model IDs above, and `MODEL_PRICING` (prices per model, so per-run cost limits apply).
+1. In `.env`, set `MODEL_PROVIDER=live` and three keys: `META_API_KEY` (Meta Model API), `BASETEN_API_KEY` and `FIREWORKS_API_KEY`. The model IDs above are the defaults. Meta's prices are built in; add the Baseten and Fireworks prices to `MODEL_PRICING` so their calls are costed too.
 2. Run `pnpm models:check`. It sends one small request per model and confirms tool calling, JSON answers, diffs, summaries, and that embeddings fit the database (1,024 dimensions).
 3. Re-ingest each repo, or run `pnpm demo:prepare`. Archaeo records which models produced a repo's embeddings, summaries and timeline, and redoes them when the models change.
 

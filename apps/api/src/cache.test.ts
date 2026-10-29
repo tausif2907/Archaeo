@@ -15,7 +15,8 @@ describe("result cache keys", () => {
     const base = cacheKey("abc", model, { question: "Where is the CLI parsed?" });
     expect(cacheKey("def", model, { question: "Where is the CLI parsed?" })).not.toBe(base);
     expect(cacheKey("abc", modelCacheKey(loadModelConfig({ MODEL_PROVIDER: "live" })), { question: "Where is the CLI parsed?" })).not.toBe(base);
-    expect(cacheKey("abc", modelCacheKey(loadModelConfig({ MODEL_REASON: "other-model" })), { question: "Where is the CLI parsed?" })).not.toBe(base);
+    const live = (env: NodeJS.ProcessEnv) => cacheKey("abc", modelCacheKey(loadModelConfig({ MODEL_PROVIDER: "live", ...env })), { question: "Where is the CLI parsed?" });
+    expect(live({ MODEL_REASON: "other-model" })).not.toBe(live({}));
     expect(cacheKey("abc", model, { question: "Where is the CLI built?" })).not.toBe(base);
   });
 });

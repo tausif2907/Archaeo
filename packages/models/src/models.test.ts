@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createModels, estimateCost, loadModelConfig, MockProvider, routeId, type ModelCallRecord, type ModelTask } from "./index";
+import { createModels, estimateCost, loadModelConfig, MockProvider, providersInUse, routeId, type ModelCallRecord, type ModelTask } from "./index";
 
 function setup(script?: ConstructorParameters<typeof MockProvider>[0]) {
   const calls: ModelCallRecord[] = [];
@@ -99,16 +99,35 @@ describe("models contract (mock provider)", () => {
 });
 
 describe("model config", () => {
-  it("reads prices from MODEL_PRICING and rejects malformed ones", () => {
-    const config = loadModelConfig({ MODEL_PRICING: '{"accounts/fw/models/m":{"inputPerM":0.2,"outputPerM":0.8}}' });
+  it("knows Meta's list prices and reads more from MODEL_PRICING, rejecting malformed ones", () => {
+    expect(estimateCost(loadModelConfig({}).pricing, "muse-spark-1.3", 1_000_000, 1_000_000)).toBeCloseTo(5.5);
+    const config = loadModelConfig({ MODEL_PRICING: '{"accounts/fw/models/m":{"inputPerM":0.2,"outputPerM":0.8},"muse-spark-1.3":{"inputPerM":1,"outputPerM":1}}' });
     expect(estimateCost(config.pricing, "accounts/fw/models/m", 1_000_000, 500_000)).toBeCloseTo(0.6);
-    expect(loadModelConfig({}).pricing).toEqual({});
+    expect(estimateCost(config.pricing, "muse-spark-1.3", 1_000_000, 1_000_000)).toBeCloseTo(2);
     expect(() => loadModelConfig({ MODEL_PRICING: "muse=1/4" })).toThrow(/must be JSON/);
     expect(() => loadModelConfig({ MODEL_PRICING: '{"m":{"inputPerM":1}}' })).toThrow(/numeric inputPerM and outputPerM/);
   });
 
   it("names each task's route so stored data can record its model", () => {
-    expect(routeId(loadModelConfig({}), "embed")).toBe("mock/openweights-embedding-tbd");
+    expect(routeId(loadModelConfig({}), "embed")).toBe("mock/mock-embed");
+    expect(routeId(loadModelConfig({ MODEL_EMBED: "some-embedder" }), "embed")).toBe("mock/mock-embed");
     expect(routeId(loadModelConfig({ MODEL_PROVIDER: "live", MODEL_REASON: "muse-spark-x" }), "reason")).toBe("meta/muse-spark-x");
+  });
+
+  it("routes live tasks to Muse Spark on Meta, Muse Spark Open on Baseten and embeddings on Fireworks", () => {
+    const config = loadModelConfig({ MODEL_PROVIDER: "live", MODEL_API_KEY: "k" });
+    expect(routeId(config, "reason")).toBe("meta/muse-spark-1.3");
+    expect(routeId(config, "writeCode")).toBe("meta/muse-spark-1.3");
+    expect(routeId(config, "summarizeCheap")).toBe("baseten/meta-models/muse-spark-open");
+    expect(routeId(config, "embed")).toBe("fireworks/accounts/fireworks/models/qwen3-embedding-0p6b");
+    expect(config.providers.meta).toEqual({ baseUrl: "https://api.meta.ai/v1", apiKey: "k" });
+    expect(config.providers.baseten.baseUrl).toBe("https://inference.baseten.co/v1");
+    expect([...providersInUse(config).keys()].sort()).toEqual(["baseten", "fireworks", "meta"]);
+    expect(providersInUse(loadModelConfig({}))).toEqual(new Map());
+
+    const moved = loadModelConfig({ MODEL_PROVIDER: "live", OPENWEIGHTS_PROVIDER: "fireworks", EMBED_PROVIDER: "baseten", META_API_KEY: "a", MODEL_API_KEY: "b" });
+    expect(moved.tasks.summarizeCheap.provider).toBe("fireworks");
+    expect(moved.tasks.embed.provider).toBe("baseten");
+    expect(moved.providers.meta.apiKey).toBe("a");
   });
 });

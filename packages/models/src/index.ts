@@ -16,7 +16,7 @@ import type {
 } from "./types";
 
 export * from "./types";
-export { loadModelConfig, estimateCost, routeId, type ModelConfig, type Pricing, type ProviderName, type TaskRoute } from "./config";
+export { loadModelConfig, estimateCost, routeId, providersInUse, type ModelConfig, type Pricing, type ProviderName, type TaskRoute } from "./config";
 export { MockProvider, MOCK_PATCH, mockEmbedding, estimateTokens } from "./providers/mock";
 export { OpenAICompatibleProvider } from "./providers/openai-compatible";
 
@@ -31,7 +31,8 @@ function defaultProviders(config: ModelConfig): Record<ProviderName, ModelProvid
   return {
     mock: new MockProvider(),
     meta: new OpenAICompatibleProvider("meta", config.providers.meta, { timeoutMs: config.timeoutMs }),
-    openweights: new OpenAICompatibleProvider(config.providers.openweights.host, config.providers.openweights, { timeoutMs: config.timeoutMs }),
+    baseten: new OpenAICompatibleProvider("baseten", config.providers.baseten, { timeoutMs: config.timeoutMs }),
+    fireworks: new OpenAICompatibleProvider("fireworks", config.providers.fireworks, { timeoutMs: config.timeoutMs }),
   };
 }
 
