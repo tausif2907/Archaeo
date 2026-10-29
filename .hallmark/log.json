@@ -1,0 +1,32 @@
+[
+ {
+  "mode": "redesign",
+  "depth": "full",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "console",
+  "axes": "dark/grotesk-sans/chromatic-amber",
+  "hero": "none (app screen)",
+  "nav": "top bar, wordmark home",
+  "footer": "none",
+  "imagery": "product data only",
+  "photos": [],
+  "entry": "repo readings strip",
+  "fingerprint": "app/top-bar/readings-strip/one-surface-panels/trail/log",
+  "sections": [
+   "home: intake beside excavated repos",
+   "repo: readings strip, tabs",
+   "map: canvas and side panel on one surface",
+   "ask: questions on a spine, tool log",
+   "timeline: era strip instrument, era panel",
+   "why: history trail, blame bars",
+   "fix: case file, attempts with diffs, recent cases"
+  ],
+  "signature": "the record: amber for a person (commits, PRs), cool for an instrument (code refs, traces)",
+  "waived": [
+   "39b"
+  ],
+  "prompt": "a developer tool that reads a GitHub repository history, maps its architecture, answers questions with cited code and traces and fixes bugs in a sandbox",
+  "date": "2026-10-29"
+ }
+]

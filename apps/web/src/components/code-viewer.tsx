@@ -48,40 +48,42 @@ function CodeDrawer({ repoId, repoUrl, target, onClose }: { repoId: string; repo
   }, [onClose]);
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-stone-950/30" onClick={onClose} role="presentation">
+    <div className="fixed inset-0 z-(--z-modal) flex justify-end bg-scrim" onClick={onClose} role="presentation">
       <aside
         role="dialog"
         aria-label={`${target.path} lines ${target.startLine}-${target.endLine}`}
-        className="flex h-full w-full max-w-3xl flex-col bg-white shadow-2xl dark:bg-stone-900"
+        className="flex h-full w-full max-w-3xl flex-col border-l border-rule bg-paper-2"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="flex items-center justify-between gap-3 border-b border-stone-200 px-4 py-3 dark:border-stone-800">
-          <div className="min-w-0">
-            <p className="truncate font-mono text-sm font-medium">{target.path}</p>
-            <p className="text-xs text-stone-500">
-              Lines {target.startLine}–{target.endLine}
-              {file && ` of ${file.totalLines}`} ·{" "}
-              <a href={`${repoUrl}/blob/HEAD/${target.path}#L${target.startLine}-L${target.endLine}`} target="_blank" rel="noreferrer" className="hover:underline">
+        <header className="flex items-center justify-between gap-3 border-b border-rule px-5 py-3">
+          <div className="min-w-0 space-y-0.5">
+            <p className="measured truncate text-sm text-cool">{target.path}</p>
+            <p className="flex flex-wrap gap-x-4 text-xs text-muted">
+              <span className="measured">
+                Lines {target.startLine} to {target.endLine}
+                {file && ` of ${file.totalLines}`}
+              </span>
+              <a href={`${repoUrl}/blob/HEAD/${target.path}#L${target.startLine}-L${target.endLine}`} target="_blank" rel="noreferrer" className="link">
                 View on GitHub
               </a>
             </p>
           </div>
-          <button type="button" onClick={onClose} className="rounded-md px-2 py-1 text-sm text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-800" aria-label="Close code viewer">
+          <button type="button" onClick={onClose} className="btn btn--ghost" aria-label="Close code viewer" autoFocus>
             Close
           </button>
         </header>
-        <div className="flex-1 overflow-auto">
-          {error && <p className="p-4 text-sm text-red-600">{error}</p>}
-          {!file && !error && <p className="animate-pulse p-4 text-sm text-stone-500">Loading…</p>}
+        <div className="flex-1 overflow-auto bg-paper-3">
+          {error && <p className="p-5 text-sm text-bad">{error}</p>}
+          {!file && !error && <p className="p-5 text-sm text-muted motion-safe:animate-pulse">Loading…</p>}
           {file && (
-            <table className="w-full border-collapse font-mono text-xs leading-5">
+            <table className="measured w-full border-collapse text-xs leading-5">
               <tbody>
                 {file.lines.map((line, i) => {
                   const n = i + 1;
                   const hit = n >= target.startLine && n <= target.endLine;
                   return (
-                    <tr key={n} ref={n === target.startLine ? firstLine : undefined} className={hit ? "bg-amber-100 dark:bg-amber-900/40" : undefined}>
-                      <td className="select-none border-r border-stone-200 px-3 text-right align-top text-stone-400 dark:border-stone-800">{n}</td>
+                    <tr key={n} ref={n === target.startLine ? firstLine : undefined} className={hit ? "bg-cool-soft text-ink" : "text-ink-2"}>
+                      <td className={`select-none border-r border-rule px-3 text-right align-top ${hit ? "text-cool" : "text-muted"}`}>{n}</td>
                       <td className="whitespace-pre px-3">{line || " "}</td>
                     </tr>
                   );
@@ -89,7 +91,7 @@ function CodeDrawer({ repoId, repoUrl, target, onClose }: { repoId: string; repo
               </tbody>
             </table>
           )}
-          {file?.truncated && <p className="p-4 text-xs text-stone-500">File truncated after {file.lines.length} lines.</p>}
+          {file?.truncated && <p className="p-5 text-xs text-muted">File truncated after {file.lines.length} lines.</p>}
         </div>
       </aside>
     </div>

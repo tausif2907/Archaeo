@@ -1,7 +1,11 @@
 import type { Metadata } from "next";
+import { Atkinson_Hyperlegible_Mono, Host_Grotesk } from "next/font/google";
 import type { ReactNode } from "react";
 import "@xyflow/react/dist/style.css";
 import "./globals.css";
+
+const hostGrotesk = Host_Grotesk({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-host-grotesk", display: "swap" });
+const atkinsonMono = Atkinson_Hyperlegible_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-atkinson-mono", display: "swap" });
 
 export const metadata: Metadata = {
   title: "Archaeo",
@@ -10,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" className={`${hostGrotesk.variable} ${atkinsonMono.variable}`}>
       <body>{children}</body>
     </html>
   );

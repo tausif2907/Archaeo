@@ -1,0 +1,12 @@
+{
+  "scanned": "2026-10-29",
+  "findings": {
+    "fonts": "none chosen; Tailwind's default system stack",
+    "palette": "Tailwind stone, amber, sky and emerald utilities with dark: variants; no tokens (apps/web/src/app/globals.css)",
+    "motion": "Tailwind animate-pulse and transition utilities only",
+    "spacing": "Tailwind 4px scale",
+    "framework": "Next.js 15.5 app router, Tailwind CSS 4, React Flow 12 (apps/web/package.json)"
+  },
+  "preserve": ["routes and wiring", "every test hook the Playwright suite reads", "all copy except lines a gate named", "the amber commit and PR, blue code citation split"],
+  "introduce": ["Console theme tokens (tokens.css, base.css)", "Host Grotesk and Atkinson Hyperlegible Mono via next/font", "shared controls with all eight states", "app-screen compositions per tab"]
+}

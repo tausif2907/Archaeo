@@ -6,11 +6,12 @@ import Link from "next/link";
 import { API_URL, api } from "@/lib/api";
 import { useAppConfig } from "@/lib/use-config";
 
-export const STATUS_STYLES: Record<RepoStatus, string> = {
-  queued: "bg-stone-200 text-stone-700 dark:bg-stone-800 dark:text-stone-300",
-  ingesting: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
-  ready: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
-  failed: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+/** `data-tone` for a status chip: ready is ok, ingesting is the current step, failed is bad. */
+export const STATUS_TONES: Record<RepoStatus, "ok" | "bad" | "accent" | undefined> = {
+  queued: undefined,
+  ingesting: "accent",
+  ready: "ok",
+  failed: "bad",
 };
 
 const STAGE_LABELS: Record<StageProgress["name"], string> = {
@@ -22,10 +23,10 @@ const STAGE_LABELS: Record<StageProgress["name"], string> = {
 };
 
 const BAR_STYLES: Record<StageProgress["state"], string> = {
-  pending: "bg-stone-200 dark:bg-stone-800",
-  active: "bg-amber-400 dark:bg-amber-500",
-  done: "bg-emerald-500 dark:bg-emerald-600",
-  failed: "bg-red-500",
+  pending: "bg-rule",
+  active: "bg-accent",
+  done: "bg-ok",
+  failed: "bg-bad",
 };
 
 export const fmt = (n: number) => n.toLocaleString("en-US");
@@ -40,22 +41,22 @@ function StageBar({ stage }: { stage: StageProgress }) {
   const fill = stage.state === "pending" ? 0 : stage.state === "active" && stage.total ? Math.round(((stage.done ?? 0) / stage.total) * 100) : 100;
   const detail = stageDetail(stage);
   return (
-    <li className="min-w-0 flex-1 space-y-1.5">
-      <div className="h-1.5 overflow-hidden rounded-full bg-stone-200 dark:bg-stone-800">
+    <li className="min-w-0 flex-1 space-y-2">
+      <div className="h-1.5 overflow-hidden rounded-full bg-rule">
         <div
-          className={`h-full rounded-full transition-all duration-500 ${BAR_STYLES[stage.state]} ${indeterminate ? "animate-pulse" : ""}`}
-          style={{ width: `${indeterminate ? 100 : fill}%` }}
+          className={`h-full origin-left rounded-full transition-transform duration-500 ease-out ${BAR_STYLES[stage.state]} ${indeterminate ? "motion-safe:animate-pulse" : ""}`}
+          style={{ transform: `scaleX(${(indeterminate ? 100 : fill) / 100})` }}
         />
       </div>
       <div className="text-xs">
-        <span className={stage.state === "pending" ? "text-stone-400 dark:text-stone-600" : "font-medium"}>{STAGE_LABELS[stage.name]}</span>
-        {detail && <span className="block truncate tabular-nums text-stone-500">{detail}</span>}
+        <span className={stage.state === "pending" ? "text-muted" : "font-medium text-ink"}>{STAGE_LABELS[stage.name]}</span>
+        {detail && <span className="measured block truncate text-muted">{detail}</span>}
       </div>
     </li>
   );
 }
 
-/** Ingest progress card. Polls until the repo is ready or failed, then calls `onSettled`. */
+/** Ingest progress and the repo's readings. Polls until the repo is ready or failed. */
 export function RepoStatusCard({ repoId, onProgress }: { repoId: string; onProgress?: (p: RepoProgressDto) => void }) {
   const [progress, setProgress] = useState<RepoProgressDto | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -97,51 +98,63 @@ export function RepoStatusCard({ repoId, onProgress }: { repoId: string; onProgr
   if (!progress && error) {
     const notFound = /not found/i.test(error);
     return (
-      <article className="space-y-3 rounded-xl border border-red-200 bg-white p-5 dark:border-red-900 dark:bg-stone-900">
-        <h1 className="text-lg font-semibold">{notFound ? "Repository not found" : "Can't reach the Archaeo API"}</h1>
-        <p className="text-sm text-stone-600 dark:text-stone-400">
+      <article className="panel max-w-2xl space-y-4 p-6">
+        <h1 className="text-xl">{notFound ? "Repository not found" : "Can't reach the Archaeo API"}</h1>
+        <p className="text-ink-2">
           {notFound ? "This repository isn't in Archaeo. Add it from the home page." : `${error}. Check that the API is running (pnpm dev) and reachable at ${API_URL}.`}
         </p>
-        <Link href="/" className="inline-block text-sm font-medium underline-offset-4 hover:underline">
-          ← Back to Archaeo
+        <Link href="/" className="btn">
+          Back to Archaeo
         </Link>
       </article>
     );
   }
   if (!progress) {
-    return <div className="h-40 animate-pulse rounded-xl border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900" />;
+    return (
+      <div className="space-y-5" aria-busy="true" aria-label="Loading the repository">
+        <div className="skeleton h-12 w-80 max-w-full motion-safe:animate-pulse" />
+        <div className="skeleton h-20 motion-safe:animate-pulse" />
+      </div>
+    );
   }
 
   const { repo, counts } = progress;
   return (
-    <article className="space-y-5 rounded-xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <h1 className="truncate text-xl font-semibold">
+    <section className="space-y-6" aria-labelledby="repo-heading">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div className="min-w-0 space-y-1">
+          <h1 id="repo-heading" className="truncate">
             {repo.owner}/{repo.name}
           </h1>
-          <a href={repo.url} target="_blank" rel="noreferrer" className="text-sm text-stone-500 hover:underline">
+          <a href={repo.url} target="_blank" rel="noreferrer" className="link measured text-sm">
             {repo.url}
           </a>
         </div>
-        <span className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLES[repo.status]}`}>{repo.status}</span>
+        <div className="flex items-center gap-3">
+          <span className="chip" data-tone={STATUS_TONES[repo.status]} role="status">
+            {repo.status}
+          </span>
+          {settled && !publicDemo && (
+            <button type="button" onClick={onReingest} className="btn">
+              Re-ingest
+            </button>
+          )}
+        </div>
       </div>
 
       {!(repo.status === "ready") && (
-        <ol className="flex gap-2" aria-label="Ingest progress">
+        <ol className="flex gap-3" aria-label="Ingest progress">
           {progress.stages.map((s) => (
             <StageBar key={s.name} stage={s} />
           ))}
         </ol>
       )}
 
-      {repo.statusMessage && (
-        <p className={`text-sm ${repo.status === "failed" ? "text-red-600 dark:text-red-400" : "text-stone-600 dark:text-stone-400"}`}>{repo.statusMessage}</p>
-      )}
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+      {repo.statusMessage && <p className={`text-sm ${repo.status === "failed" ? "text-bad" : "text-ink-2"}`}>{repo.statusMessage}</p>}
+      {error && <p className="text-sm text-bad">{error}</p>}
 
       {repo.status === "ready" && (
-        <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-4">
+        <dl className="panels grid-cols-2 sm:grid-cols-4 xl:grid-cols-8">
           {(
             [
               ["Files", counts.files],
@@ -154,19 +167,13 @@ export function RepoStatusCard({ repoId, onProgress }: { repoId: string; onProgr
               ["Chunks", counts.chunks],
             ] as const
           ).map(([label, value]) => (
-            <div key={label}>
-              <dt className="text-stone-500">{label}</dt>
-              <dd className="font-medium tabular-nums">{fmt(value)}</dd>
+            <div key={label} className="space-y-1 px-4 py-3">
+              <dt className="text-xs text-muted">{label}</dt>
+              <dd className="measured text-xl leading-none text-ink">{fmt(value)}</dd>
             </div>
           ))}
         </dl>
       )}
-
-      {settled && !publicDemo && (
-        <button type="button" onClick={onReingest} className="text-sm font-medium text-stone-600 underline-offset-4 hover:underline dark:text-stone-400">
-          Re-ingest
-        </button>
-      )}
-    </article>
+    </section>
   );
 }

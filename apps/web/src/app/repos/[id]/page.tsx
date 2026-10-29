@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { RepoProgressDto } from "@archaeo/shared";
+import { AppBar } from "@/components/app-bar";
 import { ArchitectureMap } from "@/components/arch-map";
 import { AskPanel } from "@/components/ask-panel";
 import { CodeViewerProvider } from "@/components/code-viewer";
@@ -38,38 +38,29 @@ export default function RepoPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10">
-      <Link href="/" className="text-sm font-medium text-stone-500 hover:text-stone-900 dark:hover:text-stone-100">
-        ← Archaeo
-      </Link>
-      <RepoStatusCard repoId={id} onProgress={setProgress} />
-      {repo?.status === "ready" && (
-        <CodeViewerProvider repoId={id} repoUrl={repo.url}>
-          <nav className="flex gap-1 border-b border-stone-200 dark:border-stone-800" role="tablist" aria-label="Views">
-            {TABS.map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                role="tab"
-                aria-selected={tab === t.id}
-                onClick={() => select(t.id)}
-                className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium ${
-                  tab === t.id ? "border-stone-900 text-stone-900 dark:border-stone-100 dark:text-stone-100" : "border-transparent text-stone-500 hover:text-stone-800 dark:hover:text-stone-200"
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </nav>
-          <div role="tabpanel">
-            {tab === "map" && <ArchitectureMap repoId={id} />}
-            {tab === "ask" && <AskPanel repoId={id} repoUrl={repo.url} />}
-            {tab === "timeline" && <Timeline repoId={id} repoUrl={repo.url} />}
-            {tab === "why" && <WhyPanel repoId={id} repoUrl={repo.url} />}
-            {tab === "fix" && <FixPanel repoId={id} repoUrl={repo.url} repoName={`${repo.owner}/${repo.name}`} />}
-          </div>
-        </CodeViewerProvider>
-      )}
-    </main>
+    <>
+      <AppBar />
+      <main className="container flex flex-col gap-8 pt-8 pb-16 lg:pt-10">
+        <RepoStatusCard repoId={id} onProgress={setProgress} />
+        {repo?.status === "ready" && (
+          <CodeViewerProvider repoId={id} repoUrl={repo.url}>
+            <nav className="-mt-2 flex overflow-x-auto border-b border-rule" role="tablist" aria-label="Views">
+              {TABS.map((t) => (
+                <button key={t.id} type="button" role="tab" aria-selected={tab === t.id} onClick={() => select(t.id)} className="tab">
+                  {t.label}
+                </button>
+              ))}
+            </nav>
+            <div role="tabpanel">
+              {tab === "map" && <ArchitectureMap repoId={id} />}
+              {tab === "ask" && <AskPanel repoId={id} repoUrl={repo.url} />}
+              {tab === "timeline" && <Timeline repoId={id} repoUrl={repo.url} />}
+              {tab === "why" && <WhyPanel repoId={id} repoUrl={repo.url} />}
+              {tab === "fix" && <FixPanel repoId={id} repoUrl={repo.url} repoName={`${repo.owner}/${repo.name}`} />}
+            </div>
+          </CodeViewerProvider>
+        )}
+      </main>
+    </>
   );
 }

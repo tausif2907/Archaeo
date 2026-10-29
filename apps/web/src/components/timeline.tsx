@@ -7,15 +7,6 @@ import { useAppConfig } from "@/lib/use-config";
 import { CitedText } from "./cited-text";
 import { fmt } from "./repo-status";
 
-const SEGMENT_COLORS = [
-  "bg-amber-200 dark:bg-amber-900/60",
-  "bg-orange-200 dark:bg-orange-900/60",
-  "bg-rose-200 dark:bg-rose-900/60",
-  "bg-violet-200 dark:bg-violet-900/60",
-  "bg-sky-200 dark:bg-sky-900/60",
-  "bg-teal-200 dark:bg-teal-900/60",
-];
-
 const monthYear = (iso: string) => new Date(iso).toLocaleDateString("en-US", { month: "short", year: "numeric", timeZone: "UTC" });
 const year = (iso: string) => new Date(iso).getUTCFullYear();
 
@@ -60,81 +51,109 @@ export function Timeline({ repoId, repoUrl }: { repoId: string; repoUrl: string 
   }
 
   return (
-    <section className="space-y-4" aria-labelledby="timeline-heading">
-      <div className="flex items-baseline justify-between gap-4">
-        <h2 id="timeline-heading" className="text-lg font-semibold">
-          Timeline
-        </h2>
+    <section className="space-y-5" aria-labelledby="timeline-heading">
+      <div className="flex items-center justify-between gap-4">
+        <h2 id="timeline-heading">Timeline</h2>
         {data && !busy && !publicDemo && (
-          <button type="button" onClick={regenerate} className="text-sm font-medium text-stone-600 underline-offset-4 hover:underline dark:text-stone-400">
+          <button type="button" onClick={regenerate} className="btn">
             Regenerate
           </button>
         )}
       </div>
 
-      {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
-      {busy && <p className="animate-pulse text-sm text-stone-600 dark:text-stone-400">{data?.message ?? "Reading the history…"}</p>}
-      {data?.status === "failed" && <p className="text-sm text-red-600 dark:text-red-400">Era generation failed: {data.message}</p>}
-      {data && !busy && data.status !== "failed" && eras.length === 0 && <p className="text-sm text-stone-500">No eras yet.</p>}
+      {error && <p className="text-sm text-bad">{error}</p>}
+      {busy && (
+        <p className="text-sm text-ink-2 motion-safe:animate-pulse" role="status">
+          {data?.message ?? "Reading the history…"}
+        </p>
+      )}
+      {data?.status === "failed" && <p className="text-sm text-bad">Era generation failed: {data.message}</p>}
+      {data && !busy && data.status !== "failed" && eras.length === 0 && <p className="well px-4 py-6 text-sm text-muted">No eras yet.</p>}
+      {!data && !error && <div className="skeleton h-16 motion-safe:animate-pulse" aria-busy="true" aria-label="Loading the timeline" />}
 
       {eras.length > 0 && (
         <>
           <div>
-            <div className="flex h-12 gap-0.5 overflow-hidden rounded-lg" role="tablist" aria-label="Eras">
+            <div className="flex h-16 gap-px overflow-x-auto rounded-card border border-rule bg-rule" role="tablist" aria-label="Eras">
               {eras.map((e, i) => (
                 <button
                   key={e.id}
                   type="button"
                   role="tab"
                   aria-selected={i === selected}
-                  title={`${e.title} (${monthYear(e.startDate)} – ${monthYear(e.endDate)})`}
+                  title={`${e.title} (${monthYear(e.startDate)} to ${monthYear(e.endDate)})`}
                   onClick={() => setSelected(i)}
                   style={{ width: `${widths[i]}%` }}
-                  className={`min-w-0 px-1.5 text-left text-xs transition ${SEGMENT_COLORS[i % SEGMENT_COLORS.length]} ${
-                    i === selected ? "ring-2 ring-inset ring-stone-900 dark:ring-stone-100" : "opacity-70 hover:opacity-100"
+                  className={`relative min-w-18 shrink-0 cursor-pointer px-2 text-left transition-colors duration-200 ${
+                    i === selected
+                      ? "bg-accent-soft text-ink before:absolute before:inset-x-0 before:top-0 before:h-0.5 before:bg-accent"
+                      : "bg-paper-2 text-ink-2 hover:bg-paper-hover active:bg-paper-3"
                   }`}
                 >
-                  <span className="block truncate font-medium">{i + 1}</span>
-                  <span className="block truncate tabular-nums text-stone-600 dark:text-stone-300">
-                    {year(e.startDate) === year(e.endDate) ? year(e.startDate) : `${year(e.startDate)}–${String(year(e.endDate)).slice(2)}`}
+                  <span className="measured block truncate text-sm">{i + 1}</span>
+                  <span className={`measured block truncate text-xs ${i === selected ? "text-ink-2" : "text-muted"}`}>
+                    {year(e.startDate) === year(e.endDate) ? year(e.startDate) : `${year(e.startDate)}/${String(year(e.endDate)).slice(2)}`}
                   </span>
                 </button>
               ))}
             </div>
-            <div className="mt-1 flex justify-between text-xs tabular-nums text-stone-500">
+            <div className="measured mt-1.5 flex justify-between text-xs text-muted">
               <span>{monthYear(eras[0]!.startDate)}</span>
               <span>{monthYear(eras[eras.length - 1]!.endDate)}</span>
             </div>
           </div>
 
           {era && (
-            <article className="space-y-4 rounded-xl border border-stone-200 bg-white p-5 dark:border-stone-800 dark:bg-stone-900" role="tabpanel">
-              <header className="space-y-1">
-                <p className="text-xs font-medium uppercase tracking-wide text-stone-500">
-                  Era {selected + 1} of {eras.length} · {monthYear(era.startDate)} – {monthYear(era.endDate)}
-                </p>
-                <h3 className="text-lg font-semibold">{era.title}</h3>
-                {era.stats && (
-                  <p className="text-sm text-stone-600 dark:text-stone-400">
-                    {fmt(era.stats.commits)} commits · {era.stats.contributors} contributors
-                    {era.stats.releases.length > 0 && ` · ${era.stats.releases.length} release${era.stats.releases.length === 1 ? "" : "s"}`}
-                  </p>
-                )}
+            <article className="panel space-y-6 p-6" role="tabpanel">
+              <header className="space-y-4">
+                <h3 className="text-xl">{era.title}</h3>
+                <dl className="flex flex-wrap gap-x-8 gap-y-2">
+                  <div>
+                    <dt className="text-xs text-muted">Era</dt>
+                    <dd className="measured text-ink">
+                      {selected + 1} of {eras.length}
+                    </dd>
+                  </div>
+                  <div>
+                    <dt className="text-xs text-muted">Period</dt>
+                    <dd className="measured text-ink">
+                      {monthYear(era.startDate)} to {monthYear(era.endDate)}
+                    </dd>
+                  </div>
+                  {era.stats && (
+                    <>
+                      <div>
+                        <dt className="text-xs text-muted">Commits</dt>
+                        <dd className="measured text-ink">{fmt(era.stats.commits)}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-xs text-muted">Contributors</dt>
+                        <dd className="measured text-ink">{era.stats.contributors}</dd>
+                      </div>
+                      {era.stats.releases.length > 0 && (
+                        <div>
+                          <dt className="text-xs text-muted">Releases</dt>
+                          <dd className="measured text-ink">{era.stats.releases.length}</dd>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </dl>
               </header>
 
               {era.narrative && <CitedText text={era.narrative} repoUrl={repoUrl} />}
 
-              <div className="grid gap-4 border-t border-stone-200 pt-4 text-sm sm:grid-cols-2 dark:border-stone-800">
+              <div className="grid gap-6 border-t border-rule pt-5 text-sm sm:grid-cols-2">
                 {era.keyPrs.length > 0 && (
                   <div>
-                    <h4 className="mb-2 font-medium">Key pull requests</h4>
+                    <h4 className="mb-2 font-medium text-ink">Key pull requests</h4>
                     <ul className="space-y-1.5">
                       {era.keyPrs.map((p) => (
-                        <li key={p.number} className="flex gap-2">
-                          <a href={`${repoUrl}/pull/${p.number}`} target="_blank" rel="noreferrer" className="shrink-0 font-mono text-amber-800 hover:underline dark:text-amber-300">
+                        <li key={p.number} className="flex gap-3">
+                          <a href={`${repoUrl}/pull/${p.number}`} target="_blank" rel="noreferrer" className="ref ref--person shrink-0">
                             #{p.number}
                           </a>
-                          <span className="min-w-0">{p.title}</span>
+                          <span className="min-w-0 text-ink-2">{p.title}</span>
                         </li>
                       ))}
                     </ul>
@@ -142,14 +161,14 @@ export function Timeline({ repoId, repoUrl }: { repoId: string; repoUrl: string 
                 )}
                 {era.keyCommits.length > 0 && (
                   <div>
-                    <h4 className="mb-2 font-medium">Key commits</h4>
+                    <h4 className="mb-2 font-medium text-ink">Key commits</h4>
                     <ul className="space-y-1.5">
                       {era.keyCommits.map((c) => (
-                        <li key={c.sha} className="flex gap-2">
-                          <a href={`${repoUrl}/commit/${c.sha}`} target="_blank" rel="noreferrer" className="shrink-0 font-mono text-amber-800 hover:underline dark:text-amber-300">
+                        <li key={c.sha} className="flex gap-3">
+                          <a href={`${repoUrl}/commit/${c.sha}`} target="_blank" rel="noreferrer" className="ref ref--person shrink-0">
                             {c.shortSha}
                           </a>
-                          <span className="min-w-0 break-words">{c.subject}</span>
+                          <span className="min-w-0 break-words text-ink-2">{c.subject}</span>
                         </li>
                       ))}
                     </ul>
@@ -157,13 +176,26 @@ export function Timeline({ repoId, repoUrl }: { repoId: string; repoUrl: string 
                 )}
               </div>
               {era.stats && era.stats.topAreas.length > 0 && (
-                <p className="text-xs text-stone-500">
-                  Activity: {era.stats.topAreas.map((a) => `${a.area === "(root)" ? "top-level files" : a.area} ${a.percent}%`).join(" · ")}
-                </p>
+                <div className="border-t border-rule pt-5 text-sm">
+                  <h4 className="mb-3 font-medium text-ink">Activity</h4>
+                  <ul className="grid gap-x-8 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {era.stats.topAreas.map((a) => (
+                      <li key={a.area} className="space-y-1.5">
+                        <div className="flex justify-between gap-3">
+                          <span className={a.area === "(root)" ? "truncate text-ink-2" : "measured truncate text-ink-2"}>{a.area === "(root)" ? "top-level files" : a.area}</span>
+                          <span className="measured shrink-0 text-muted">{a.percent}%</span>
+                        </div>
+                        <div className="h-1 overflow-hidden rounded-full bg-rule">
+                          <div className="h-full origin-left rounded-full bg-cool" style={{ transform: `scaleX(${Math.min(100, a.percent) / 100})` }} />
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
               )}
             </article>
           )}
-          {data?.message && <p className="text-xs text-stone-500">{data.message}</p>}
+          {data?.message && <p className="text-xs text-muted">{data.message}</p>}
         </>
       )}
     </section>

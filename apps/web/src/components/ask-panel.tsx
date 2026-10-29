@@ -79,84 +79,106 @@ export function AskPanel({ repoId, repoUrl }: { repoId: string; repoUrl: string 
   }
 
   return (
-    <section className="space-y-5" aria-labelledby="ask-heading">
-      <h2 id="ask-heading" className="text-lg font-semibold">
-        Ask the codebase
-      </h2>
+    <section className="space-y-6" aria-labelledby="ask-heading">
+      <h2 id="ask-heading">Ask the codebase</h2>
 
       {turns.length === 0 && (
         <div className="flex flex-wrap gap-2">
           {SUGGESTIONS.map((s) => (
-            <button key={s} type="button" onClick={() => void submit(s)} className="rounded-full border border-stone-300 px-3 py-1 text-sm text-stone-700 hover:bg-stone-100 dark:border-stone-700 dark:text-stone-300 dark:hover:bg-stone-800">
+            <button key={s} type="button" onClick={() => void submit(s)} className="btn font-normal text-ink-2">
               {s}
             </button>
           ))}
         </div>
       )}
 
-      <ol className="space-y-6">
-        {turns.map((t, i) => (
-          <li key={i} className="space-y-3">
-            <p className="ml-auto w-fit max-w-[85%] rounded-2xl rounded-br-sm bg-stone-900 px-4 py-2 text-white dark:bg-stone-100 dark:text-stone-900">{t.question}</p>
-            <div className="space-y-3 rounded-xl border border-stone-200 bg-white p-4 dark:border-stone-800 dark:bg-stone-900">
+      {turns.length > 0 && (
+        <ol className="space-y-8">
+          {turns.map((t, i) => (
+            <li key={i} className="space-y-4 border-l border-rule-2 pl-5">
+              <p className="max-w-[72ch] text-md font-medium text-ink">{t.question}</p>
               {t.activity.length > 0 && (
-                <ul className="space-y-1 text-xs text-stone-500">
+                <ul className="log max-w-3xl" aria-label="Tool calls">
                   {t.activity.map((a) => (
-                    <li key={a.id} className="flex items-center gap-2">
-                      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${a.done ? "bg-emerald-500" : "animate-pulse bg-amber-500"}`} />
-                      <span className="truncate">{a.label}</span>
+                    <li key={a.id}>
+                      <span className={a.done ? "text-muted" : "text-accent"}>{a.done ? "done" : "running"}</span>
+                      <span className="truncate text-ink-2">{a.label}</span>
                     </li>
                   ))}
                 </ul>
               )}
               {t.notes.map((n, j) => (
-                <p key={j} className="text-xs italic text-stone-500">
+                <p key={j} className="max-w-[72ch] text-sm text-muted">
                   {n}
                 </p>
               ))}
-              {t.running && !t.result && <p className="animate-pulse text-sm text-stone-500">Investigating…</p>}
-              {t.result && <CitedText text={t.result.answer} repoUrl={repoUrl} />}
-              {t.result && (
-                <p className="text-xs text-stone-500">
-                  {t.result.toolCalls.length} tool call{t.result.toolCalls.length === 1 ? "" : "s"} · {t.result.steps} model step{t.result.steps === 1 ? "" : "s"}
-                  {t.result.costUsd > 0 && ` · $${t.result.costUsd.toFixed(4)}`}
-                  {t.result.fallback && " · answer assembled from retrieved code"}
-                  {t.result.invalidCitations.length > 0 && ` · ${t.result.invalidCitations.length} invalid citation(s) removed`}
+              {t.running && !t.result && (
+                <p className="text-sm text-muted motion-safe:animate-pulse" role="status">
+                  Investigating…
                 </p>
               )}
-              {t.error && <p className="text-sm text-red-600 dark:text-red-400">{t.error}</p>}
-            </div>
-          </li>
-        ))}
-      </ol>
+              {t.result && <CitedText text={t.result.answer} repoUrl={repoUrl} />}
+              {t.result && (
+                <div className="space-y-1 text-xs">
+                  <dl className="flex flex-wrap gap-x-6 gap-y-1">
+                    <div className="flex gap-1.5">
+                      <dt className="text-muted">Tool calls</dt>
+                      <dd className="measured text-ink-2">{t.result.toolCalls.length}</dd>
+                    </div>
+                    <div className="flex gap-1.5">
+                      <dt className="text-muted">Model steps</dt>
+                      <dd className="measured text-ink-2">{t.result.steps}</dd>
+                    </div>
+                    {t.result.costUsd > 0 && (
+                      <div className="flex gap-1.5">
+                        <dt className="text-muted">Cost</dt>
+                        <dd className="measured text-ink-2">${t.result.costUsd.toFixed(4)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                  {t.result.fallback && <p className="text-muted">Answer assembled from retrieved code.</p>}
+                  {t.result.invalidCitations.length > 0 && (
+                    <p className="text-muted">
+                      {t.result.invalidCitations.length} invalid citation{t.result.invalidCitations.length === 1 ? "" : "s"} removed.
+                    </p>
+                  )}
+                </div>
+              )}
+              {t.error && <p className="text-sm text-bad">{t.error}</p>}
+            </li>
+          ))}
+        </ol>
+      )}
 
-      <form onSubmit={onSubmit} className="flex flex-col gap-2 sm:flex-row">
-        <label htmlFor="ask-input" className="sr-only">
+      <form onSubmit={onSubmit} className="max-w-4xl">
+        <label htmlFor="ask-input" className="label">
           Question
         </label>
-        <textarea
-          id="ask-input"
-          value={question}
-          onChange={(e) => setQuestion(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              void submit(question);
-            }
-          }}
-          rows={2}
-          placeholder="Ask how something works, where it lives, or why it is built this way…"
-          className="min-w-0 flex-1 resize-y rounded-lg border border-stone-300 bg-white px-3 py-2 text-sm outline-none focus:border-stone-500 dark:border-stone-700 dark:bg-stone-900"
-        />
-        {running ? (
-          <button type="button" onClick={() => abort.current?.abort()} className="rounded-lg border border-stone-300 px-4 py-2 font-medium dark:border-stone-700">
-            Stop
-          </button>
-        ) : (
-          <button type="submit" disabled={question.trim().length < 3} className="rounded-lg bg-stone-900 px-4 py-2 font-medium text-white disabled:opacity-50 dark:bg-stone-100 dark:text-stone-900">
-            Ask
-          </button>
-        )}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+          <textarea
+            id="ask-input"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                void submit(question);
+              }
+            }}
+            rows={2}
+            placeholder="Ask how something works, where it lives, or why it is built this way…"
+            className="field min-h-18 flex-1"
+          />
+          {running ? (
+            <button type="button" onClick={() => abort.current?.abort()} className="btn">
+              Stop
+            </button>
+          ) : (
+            <button type="submit" disabled={question.trim().length < 3} className="btn btn--primary">
+              Ask
+            </button>
+          )}
+        </div>
       </form>
     </section>
   );
