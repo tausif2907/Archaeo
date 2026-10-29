@@ -5,7 +5,8 @@ import "@xyflow/react/dist/style.css";
 import "./globals.css";
 
 const hostGrotesk = Host_Grotesk({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-host-grotesk", display: "swap" });
-const atkinsonMono = Atkinson_Hyperlegible_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-atkinson-mono", display: "swap" });
+// No published fallback metrics for this face, so next/font cannot size-adjust its fallback.
+const atkinsonMono = Atkinson_Hyperlegible_Mono({ subsets: ["latin"], weight: ["400", "500"], variable: "--font-atkinson-mono", display: "swap", adjustFontFallback: false });
 
 export const metadata: Metadata = {
   title: "Archaeo",
